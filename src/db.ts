@@ -1,0 +1,288 @@
+import * as SQLite from 'expo-sqlite';
+import { computeTotals, isInterState, Line } from './lib/gst';
+
+let dbp: Promise<SQLite.SQLiteDatabase> | null = null;
+const listeners = new Set<() => void>();
+export const subscribe = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
+const notify = () => listeners.forEach((f) => f());
+
+export function getDb() {
+  if (!dbp) dbp = init();
+  return dbp;
+}
+
+async function init() {
+  const db = await SQLite.openDatabaseAsync('hisaab.db');
+  await db.execAsync(`
+    PRAGMA journal_mode = WAL;
+    CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS parties (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'customer',
+      gstin TEXT NOT NULL DEFAULT '', phone TEXT NOT NULL DEFAULT '', state_code TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, hsn TEXT NOT NULL DEFAULT '',
+      rate_paise INTEGER NOT NULL DEFAULT 0, gst_percent REAL NOT NULL DEFAULT 18,
+      unit TEXT NOT NULL DEFAULT 'pcs', stock REAL NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS invoices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, no TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'sale',
+      party_id INTEGER NOT NULL, date TEXT NOT NULL,
+      subtotal_paise INTEGER NOT NULL, cgst_paise INTEGER NOT NULL, sgst_paise INTEGER NOT NULL,
+      igst_paise INTEGER NOT NULL, round_off_paise INTEGER NOT NULL, total_paise INTEGER NOT NULL,
+      paid_paise INTEGER NOT NULL DEFAULT 0, due_date TEXT NOT NULL DEFAULT ''
+    );
+    CREATE TABLE IF NOT EXISTS invoice_lines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, invoice_id INTEGER NOT NULL, item_id INTEGER,
+      name TEXT NOT NULL, hsn TEXT NOT NULL DEFAULT '', qty REAL NOT NULL, rate_paise INTEGER NOT NULL,
+      gst_percent REAL NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, party_id INTEGER NOT NULL, invoice_id INTEGER,
+      amount_paise INTEGER NOT NULL, date TEXT NOT NULL, direction TEXT NOT NULL DEFAULT 'in'
+    );
+    CREATE TABLE IF NOT EXISTS snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, label TEXT NOT NULL, json TEXT NOT NULL
+    );
+  `);
+  return db;
+}
+
+export type Party = { id: number; name: string; kind: string; gstin: string; phone: string; state_code: string };
+export type Item = { id: number; name: string; hsn: string; rate_paise: number; gst_percent: number; unit: string; stock: number };
+export type Invoice = {
+  id: number; no: string; kind: string; party_id: number; date: string; due_date: string;
+  subtotal_paise: number; cgst_paise: number; sgst_paise: number; igst_paise: number;
+  round_off_paise: number; total_paise: number; paid_paise: number; party_name?: string;
+};
+export type InvLine = { id: number; invoice_id: number; item_id: number | null; name: string; hsn: string; qty: number; rate_paise: number; gst_percent: number };
+
+export const today = () => new Date().toISOString().slice(0, 10);
+
+export async function getSetting(key: string, fallback = ''): Promise<string> {
+  const db = await getDb();
+  const r = await db.getFirstAsync<{ value: string }>('SELECT value FROM settings WHERE key = ?', key);
+  return r ? r.value : fallback;
+}
+export async function setSetting(key: string, value: string) {
+  const db = await getDb();
+  await db.runAsync('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, value);
+  notify();
+}
+
+export async function listParties(kind?: string): Promise<Party[]> {
+  const db = await getDb();
+  return kind
+    ? db.getAllAsync<Party>('SELECT * FROM parties WHERE kind = ? ORDER BY name', kind)
+    : db.getAllAsync<Party>('SELECT * FROM parties ORDER BY name');
+}
+export async function saveParty(p: Omit<Party, 'id'> & { id?: number }): Promise<number> {
+  const db = await getDb();
+  if (p.id) {
+    await db.runAsync('UPDATE parties SET name=?, kind=?, gstin=?, phone=?, state_code=? WHERE id=?', p.name, p.kind, p.gstin, p.phone, p.state_code, p.id);
+    notify();
+    return p.id;
+  }
+  const r = await db.runAsync('INSERT INTO parties(name,kind,gstin,phone,state_code) VALUES(?,?,?,?,?)', p.name, p.kind, p.gstin, p.phone, p.state_code);
+  notify();
+  return r.lastInsertRowId;
+}
+export async function findPartyByName(name: string): Promise<Party | null> {
+  const db = await getDb();
+  const base = name.toLowerCase().replace(/\bji\b/g, '').trim();
+  const all = await db.getAllAsync<Party>('SELECT * FROM parties');
+  return all.find((p) => p.name.toLowerCase().includes(base)) || null;
+}
+
+export async function listItems(): Promise<Item[]> {
+  const db = await getDb();
+  return db.getAllAsync<Item>('SELECT * FROM items ORDER BY name');
+}
+export async function saveItem(i: Omit<Item, 'id'> & { id?: number }): Promise<number> {
+  const db = await getDb();
+  if (i.id) {
+    await db.runAsync('UPDATE items SET name=?, hsn=?, rate_paise=?, gst_percent=?, unit=?, stock=? WHERE id=?', i.name, i.hsn, i.rate_paise, i.gst_percent, i.unit, i.stock, i.id);
+    notify();
+    return i.id;
+  }
+  const r = await db.runAsync('INSERT INTO items(name,hsn,rate_paise,gst_percent,unit,stock) VALUES(?,?,?,?,?,?)', i.name, i.hsn, i.rate_paise, i.gst_percent, i.unit, i.stock);
+  notify();
+  return r.lastInsertRowId;
+}
+export async function findItemByName(name: string): Promise<Item | null> {
+  const db = await getDb();
+  const n = name.toLowerCase();
+  const all = await db.getAllAsync<Item>('SELECT * FROM items');
+  return all.find((i) => i.name.toLowerCase().includes(n) || n.includes(i.name.toLowerCase())) || null;
+}
+
+async function nextInvoiceNo(kind: string): Promise<string> {
+  const db = await getDb();
+  const r = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM invoices WHERE kind = ?', kind);
+  const prefix = kind === 'sale' ? 'INV' : 'PUR';
+  return `${prefix}-${1001 + (r ? r.n : 0)}`;
+}
+
+export type NewLine = { itemId: number | null; name: string; hsn: string; qty: number; ratePaise: number; gstPercent: number };
+
+export async function createInvoice(args: { partyId: number; kind?: string; lines: NewLine[]; dueDays?: number }): Promise<number> {
+  const db = await getDb();
+  const kind = args.kind || 'sale';
+  const party = await db.getFirstAsync<Party>('SELECT * FROM parties WHERE id = ?', args.partyId);
+  if (!party) throw new Error('Party not found');
+  if (args.lines.length === 0) throw new Error('Add at least one item');
+  const sellerState = await getSetting('state_code');
+  const lines: Line[] = args.lines.map((l) => ({ qty: l.qty, ratePaise: l.ratePaise, gstPercent: l.gstPercent }));
+  const t = computeTotals(lines, isInterState(sellerState, party.state_code));
+  const no = await nextInvoiceNo(kind);
+  const d = new Date();
+  const due = new Date(d.getTime() + (args.dueDays ?? 15) * 86400000).toISOString().slice(0, 10);
+  let id = 0;
+  await db.withTransactionAsync(async () => {
+    const r = await db.runAsync(
+      'INSERT INTO invoices(no,kind,party_id,date,subtotal_paise,cgst_paise,sgst_paise,igst_paise,round_off_paise,total_paise,due_date) VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+      no, kind, args.partyId, today(), t.subtotalPaise, t.cgstPaise, t.sgstPaise, t.igstPaise, t.roundOffPaise, t.totalPaise, due,
+    );
+    id = r.lastInsertRowId;
+    for (const l of args.lines) {
+      await db.runAsync('INSERT INTO invoice_lines(invoice_id,item_id,name,hsn,qty,rate_paise,gst_percent) VALUES(?,?,?,?,?,?,?)', id, l.itemId, l.name, l.hsn, l.qty, l.ratePaise, l.gstPercent);
+      if (l.itemId && kind === 'sale') await db.runAsync('UPDATE items SET stock = stock - ? WHERE id = ?', l.qty, l.itemId);
+      if (l.itemId && kind === 'purchase') await db.runAsync('UPDATE items SET stock = stock + ? WHERE id = ?', l.qty, l.itemId);
+    }
+  });
+  await takeSnapshot(`Bill ${no} added`);
+  notify();
+  return id;
+}
+
+export async function getInvoice(id: number): Promise<{ inv: Invoice; lines: InvLine[]; party: Party } | null> {
+  const db = await getDb();
+  const inv = await db.getFirstAsync<Invoice>('SELECT * FROM invoices WHERE id = ?', id);
+  if (!inv) return null;
+  const lines = await db.getAllAsync<InvLine>('SELECT * FROM invoice_lines WHERE invoice_id = ?', id);
+  const party = await db.getFirstAsync<Party>('SELECT * FROM parties WHERE id = ?', inv.party_id);
+  return party ? { inv, lines, party } : null;
+}
+
+export async function recordPayment(args: { partyId: number; amountPaise: number; invoiceId?: number; direction?: 'in' | 'out' }) {
+  if (!(args.amountPaise > 0)) throw new Error('Amount must be more than zero');
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('INSERT INTO payments(party_id,invoice_id,amount_paise,date,direction) VALUES(?,?,?,?,?)', args.partyId, args.invoiceId ?? null, args.amountPaise, today(), args.direction || 'in');
+    // allocate to oldest open invoices of that party (or the named invoice first)
+    let left = args.amountPaise;
+    const kind = (args.direction || 'in') === 'in' ? 'sale' : 'purchase';
+    const open = await db.getAllAsync<Invoice>(
+      'SELECT * FROM invoices WHERE party_id = ? AND kind = ? AND paid_paise < total_paise ORDER BY (id = ?) DESC, date, id',
+      args.partyId, kind, args.invoiceId ?? -1,
+    );
+    for (const inv of open) {
+      if (left <= 0) break;
+      const need = inv.total_paise - inv.paid_paise;
+      const pay = Math.min(need, left);
+      await db.runAsync('UPDATE invoices SET paid_paise = paid_paise + ? WHERE id = ?', pay, inv.id);
+      left -= pay;
+    }
+  });
+  await takeSnapshot(`Payment ${(args.direction || 'in') === 'in' ? 'received' : 'made'}`);
+  notify();
+}
+
+export type PartyDue = { party: Party; duePaise: number; oldestDueDate: string };
+export async function listDues(kind: 'sale' | 'purchase'): Promise<PartyDue[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ party_id: number; due: number; oldest: string }>(
+    'SELECT party_id, SUM(total_paise - paid_paise) AS due, MIN(due_date) AS oldest FROM invoices WHERE kind = ? AND paid_paise < total_paise GROUP BY party_id ORDER BY due DESC',
+    kind,
+  );
+  const out: PartyDue[] = [];
+  for (const r of rows) {
+    const p = await db.getFirstAsync<Party>('SELECT * FROM parties WHERE id = ?', r.party_id);
+    if (p) out.push({ party: p, duePaise: r.due, oldestDueDate: r.oldest });
+  }
+  return out;
+}
+
+export async function recentInvoices(limit = 5): Promise<Invoice[]> {
+  const db = await getDb();
+  return db.getAllAsync<Invoice>(
+    'SELECT invoices.*, parties.name AS party_name FROM invoices JOIN parties ON parties.id = invoices.party_id ORDER BY invoices.id DESC LIMIT ?', limit,
+  );
+}
+
+export async function dashboard() {
+  const db = await getDb();
+  const t = today();
+  const s = await db.getFirstAsync<{ total: number | null; n: number; paid: number }>(
+    "SELECT SUM(total_paise) AS total, COUNT(*) AS n, SUM(CASE WHEN paid_paise >= total_paise THEN 1 ELSE 0 END) AS paid FROM invoices WHERE kind='sale' AND date = ?", t);
+  const rec = await listDues('sale');
+  const pay = await listDues('purchase');
+  return {
+    todayPaise: s?.total || 0, todayCount: s?.n || 0, todayPaid: s?.paid || 0,
+    receivePaise: rec.reduce((a, b) => a + b.duePaise, 0), receiveParties: rec.length,
+    payPaise: pay.reduce((a, b) => a + b.duePaise, 0), payParties: pay.length,
+  };
+}
+
+export async function weeklySales(): Promise<{ label: string; paise: number }[]> {
+  const db = await getDb();
+  const out: { label: string; paise: number }[] = [];
+  const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86400000);
+    const iso = d.toISOString().slice(0, 10);
+    const r = await db.getFirstAsync<{ t: number | null }>("SELECT SUM(total_paise) AS t FROM invoices WHERE kind='sale' AND date = ?", iso);
+    out.push({ label: names[d.getDay()], paise: r?.t || 0 });
+  }
+  return out;
+}
+
+export async function monthTotals() {
+  const db = await getDb();
+  const ym = today().slice(0, 7) + '%';
+  const r = await db.getFirstAsync<{ g: number | null; e: number | null; s: number | null }>(
+    "SELECT SUM(CASE WHEN kind='sale' THEN cgst_paise+sgst_paise+igst_paise ELSE 0 END) AS g, SUM(CASE WHEN kind='purchase' THEN total_paise ELSE 0 END) AS e, SUM(CASE WHEN kind='sale' THEN total_paise ELSE 0 END) AS s FROM invoices WHERE date LIKE ?", ym);
+  return { gstPaise: r?.g || 0, purchasesPaise: r?.e || 0, salesPaise: r?.s || 0 };
+}
+
+// ---- local history (snapshots) ----
+const TABLES = ['settings', 'parties', 'items', 'invoices', 'invoice_lines', 'payments'];
+export async function exportAll(): Promise<Record<string, unknown[]>> {
+  const db = await getDb();
+  const out: Record<string, unknown[]> = {};
+  for (const t of TABLES) out[t] = await db.getAllAsync(`SELECT * FROM ${t}`);
+  return out;
+}
+export async function takeSnapshot(label: string) {
+  const db = await getDb();
+  const json = JSON.stringify(await exportAll());
+  await db.runAsync('INSERT INTO snapshots(at,label,json) VALUES(?,?,?)', new Date().toISOString(), label, json);
+  await db.runAsync('DELETE FROM snapshots WHERE id NOT IN (SELECT id FROM snapshots ORDER BY id DESC LIMIT 30)');
+}
+export async function listSnapshots(): Promise<{ id: number; at: string; label: string }[]> {
+  const db = await getDb();
+  return db.getAllAsync('SELECT id, at, label FROM snapshots ORDER BY id DESC');
+}
+export async function restoreSnapshot(id: number) {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ json: string }>('SELECT json FROM snapshots WHERE id = ?', id);
+  if (!row) throw new Error('Snapshot not found');
+  await takeSnapshot('Before restore');
+  const data = JSON.parse(row.json) as Record<string, Record<string, unknown>[]>;
+  await db.withTransactionAsync(async () => {
+    for (const t of TABLES) {
+      await db.runAsync(`DELETE FROM ${t}`);
+      for (const r of data[t] || []) {
+        const cols = Object.keys(r);
+        await db.runAsync(`INSERT INTO ${t}(${cols.join(',')}) VALUES(${cols.map(() => '?').join(',')})`, ...(cols.map((c) => r[c]) as SQLite.SQLiteBindValue[]));
+      }
+    }
+  });
+  notify();
+}
+
+export async function billsThisMonth(): Promise<number> {
+  const db = await getDb();
+  const r = await db.getFirstAsync<{ n: number }>("SELECT COUNT(*) AS n FROM invoices WHERE date LIKE ?", today().slice(0, 7) + '%');
+  return r?.n || 0;
+}

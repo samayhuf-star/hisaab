@@ -1,0 +1,61 @@
+import React from 'react';
+import { ActivityIndicator, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
+import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
+import { C, F, Icon } from './src/ui';
+import { initPurchases } from './src/premium';
+
+initPurchases();
+import HomeScreen from './src/screens/HomeScreen';
+import NewBillScreen from './src/screens/NewBillScreen';
+import ShareScreen from './src/screens/ShareScreen';
+import PartiesScreen from './src/screens/PartiesScreen';
+import ItemsScreen from './src/screens/ItemsScreen';
+import ReportsScreen from './src/screens/ReportsScreen';
+import BackupScreen from './src/screens/BackupScreen';
+import { AddItemScreen, AddPartyScreen, PaymentScreen, SettingsScreen } from './src/screens/FormScreens';
+
+const Tab = createBottomTabNavigator();
+const Stack = createNativeStackNavigator();
+
+function Tabs() {
+  const tab = (name: string, comp: any, icon: string, label: string) => (
+    <Tab.Screen name={name} component={comp} options={{ tabBarLabel: label, tabBarIcon: ({ color }) => <Icon name={icon} color={color} /> }} />
+  );
+  return (
+    <Tab.Navigator screenOptions={{ headerShown: false, tabBarActiveTintColor: C.green, tabBarInactiveTintColor: C.muted, tabBarLabelStyle: { fontFamily: F.semi, fontSize: 11 } }}>
+      {tab('Home', HomeScreen, 'home', 'Home')}
+      {tab('Parties', PartiesScreen, 'parties', 'Parties')}
+      {tab('Items', ItemsScreen, 'items', 'Items')}
+      {tab('Reports', ReportsScreen, 'reports', 'Reports')}
+      {tab('Backup', BackupScreen, 'backup', 'Backup')}
+    </Tab.Navigator>
+  );
+}
+
+export default function App() {
+  const [ok] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, SpaceGrotesk_700Bold });
+  if (!ok) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={C.green} /></View>;
+  const hdr = { headerTitleStyle: { fontFamily: F.bold }, headerTintColor: C.ink, headerStyle: { backgroundColor: C.bg }, headerShadowVisible: false };
+  return (
+    <SafeAreaProvider>
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={hdr}>
+          <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
+          <Stack.Screen name="NewBill" component={NewBillScreen} options={{ title: 'New bill' }} />
+          <Stack.Screen name="Share" component={ShareScreen} options={{ title: 'Bill ready', headerBackVisible: false }} />
+          <Stack.Screen name="AddParty" component={AddPartyScreen} options={{ title: 'Add party' }} />
+          <Stack.Screen name="AddItem" component={AddItemScreen} options={{ title: 'Add item' }} />
+          <Stack.Screen name="PaymentIn" component={PaymentScreen} options={{ title: 'Record payment' }} />
+          <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
+        </Stack.Navigator>
+      </NavigationContainer>
+      <StatusBar style="dark" />
+    </SafeAreaProvider>
+  );
+}
