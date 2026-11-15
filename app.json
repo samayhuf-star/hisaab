@@ -38,6 +38,11 @@
       "expo-splash-screen"
     ],
     "scheme": "hisaab",
-    "owner": "kroszs-team"
+    "owner": "kroszs-team",
+    "extra": {
+      "eas": {
+        "projectId": "a899980a-8fe4-4f80-af89-2430710b2eac"
+      }
+    }
   }
 }
