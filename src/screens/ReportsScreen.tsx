@@ -39,7 +39,7 @@ export default function ReportsScreen() {
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 90, gap: 8 }}>
           {week.map((w, i) => (
             <View key={i} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
-              <View style={{ width: '100%', height: Math.max(3, (w.paise / max) * 70), backgroundColor: i === week.length - 1 ? C.green : '#9CC9B6', borderRadius: 4 }} />
+              <View style={{ width: '100%', height: Math.max(3, (w.paise / max) * 70), backgroundColor: i === week.length - 1 ? C.green : '#F5B98E', borderRadius: 4 }} />
               <Text style={{ fontFamily: F.reg, fontSize: 10, color: C.muted }}>{w.label}</Text>
             </View>
           ))}

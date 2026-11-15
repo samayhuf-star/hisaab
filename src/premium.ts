@@ -3,7 +3,7 @@ import Purchases, { CustomerInfo } from 'react-native-purchases';
 import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 
 export const ENTITLEMENT = 'premium';
-export const FREE_BILLS_PER_MONTH = 20;
+export const FREE_BILLS_PER_MONTH = 50;
 let configured = false;
 
 export function initPurchases() {

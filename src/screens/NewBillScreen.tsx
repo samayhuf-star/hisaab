@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, F, Btn, Card, Field } from '../ui';
-import { billsThisMonth, createInvoice, findItemByName, findPartyByName, getSetting, saveParty, NewLine, Party } from '../db';
+import { billsThisMonth, createInvoice, findItemByBarcode, findItemByName, findPartyByName, getSetting, saveParty, NewLine, Party } from '../db';
 import { parseHinglishBill } from '../lib/hinglish';
 import { computeTotals, isInterState } from '../lib/gst';
 import { formatRupees } from '../lib/format';
 import { ensureCanBill } from '../premium';
+import { onScan } from '../lib/scan';
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 
 type Row = { itemId: number | null; name: string; hsn: string; qty: string; rate: string; gst: string };
 const blank = (): Row => ({ itemId: null, name: '', hsn: '', qty: '1', rate: '', gst: '18' });
@@ -19,6 +21,31 @@ export default function NewBillScreen({ navigation, route }: any) {
   const [rows, setRows] = useState<Row[]>([blank()]);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [listening, setListening] = useState(false);
+
+  useSpeechRecognitionEvent('start', () => setListening(true));
+  useSpeechRecognitionEvent('end', () => setListening(false));
+  useSpeechRecognitionEvent('result', (e) => { const t = e.results?.[0]?.transcript; if (t) setText(t); });
+  useSpeechRecognitionEvent('error', (e) => { setListening(false); if (e.error !== 'aborted' && e.error !== 'no-speech') setNote('Could not hear that. Type the bill instead, or try again.'); });
+  async function toggleMic() {
+    if (listening) { ExpoSpeechRecognitionModule.stop(); return; }
+    const p = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+    if (!p.granted) { setNote('Microphone is off. You can still type the bill.'); return; }
+    ExpoSpeechRecognitionModule.start({ lang: 'hi-IN', interimResults: true, continuous: false });
+  }
+  function scanItem() {
+    onScan(async (code) => {
+      const it = await findItemByBarcode(code);
+      if (!it) { setNote(`No item with barcode ${code}. Add it in Items first.`); return; }
+      setRows((r) => {
+        const row = { itemId: it.id, name: it.name, hsn: it.hsn, qty: '1', rate: String(it.rate_paise / 100), gst: String(it.gst_percent) };
+        const empty = r.length === 1 && !r[0].name && !r[0].rate;
+        return empty ? [row] : [...r, row];
+      });
+      setNote(`Added ${it.name}.`);
+    });
+    navigation.navigate('Scan');
+  }
 
   async function understand() {
     const p = parseHinglishBill(text);
@@ -75,9 +102,12 @@ export default function NewBillScreen({ navigation, route }: any) {
     <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={{ padding: 20, gap: 14 }} keyboardShouldPersistTaps="handled">
         <Card style={{ borderColor: C.green, gap: 8 }}>
-          <TextInput value={text} onChangeText={setText} placeholder="Gupta ji ko 20 LED bulb aur 10 switch ka bill" placeholderTextColor="#7A857F"
+          <TextInput value={text} onChangeText={setText} placeholder="Gupta ji ko 20 LED bulb aur 10 switch ka bill" placeholderTextColor="#8A6B58"
             multiline accessibilityLabel="Describe the bill in Hindi or English" style={{ fontFamily: F.reg, fontSize: 15, color: C.ink, minHeight: 44 }} />
-          <Text style={{ fontFamily: F.reg, fontSize: 12, color: C.muted }}>Tip: tap the microphone on your keyboard to speak.</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <Btn kind="ghost" label={listening ? 'Listening... tap to stop' : 'Speak'} onPress={toggleMic} style={{ flex: 1, minHeight: 44 }} />
+            <Btn kind="ghost" label="Scan item" onPress={scanItem} style={{ flex: 1, minHeight: 44 }} />
+          </View>
           <Btn label="Understand" onPress={understand} disabled={!text.trim()} style={{ minHeight: 44 }} />
         </Card>
         {!!note && <Text style={{ fontFamily: F.semi, fontSize: 12, color: C.green }}>{note}</Text>}
@@ -99,8 +129,8 @@ export default function NewBillScreen({ navigation, route }: any) {
           </Card>
         ))}
         <Pressable accessibilityRole="button" accessibilityLabel="Add another item" onPress={() => setRows((x) => [...x, blank()])}
-          style={{ minHeight: 44, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', borderColor: '#9AA69F', alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontFamily: F.semi, fontSize: 13, color: '#3F4A44' }}>+ Add another item</Text>
+          style={{ minHeight: 44, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', borderColor: '#C9A48A', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontFamily: F.semi, fontSize: 13, color: '#5A3E2B' }}>+ Add another item</Text>
         </Pressable>
         <Card style={{ gap: 8 }}>
           <Row2 a="Subtotal" b={formatRupees(totals.subtotalPaise, true)} />

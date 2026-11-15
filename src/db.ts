@@ -6,13 +6,63 @@ const listeners = new Set<() => void>();
 export const subscribe = (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn); }; };
 const notify = () => listeners.forEach((f) => f());
 
+// ---- businesses (firms): one database file each, plus a small shared meta database ----
+export type Firm = { id: number; name: string; file: string };
+let metap: Promise<SQLite.SQLiteDatabase> | null = null;
+export function getMeta() {
+  if (!metap) metap = (async () => {
+    const m = await SQLite.openDatabaseAsync('hisaab-meta.db');
+    await m.execAsync(`
+      CREATE TABLE IF NOT EXISTS firms (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, file TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS bill_counts (ym TEXT PRIMARY KEY, n INTEGER NOT NULL);
+    `);
+    const c = await m.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM firms');
+    if (!c || c.n === 0) {
+      // the first business keeps the original file, so existing data is untouched
+      await m.runAsync("INSERT INTO firms(name,file) VALUES('My business','hisaab.db')");
+      await m.runAsync("INSERT OR REPLACE INTO kv(key,value) VALUES('active_firm','1')");
+    }
+    return m;
+  })();
+  return metap;
+}
+export async function listFirms(): Promise<Firm[]> {
+  const m = await getMeta();
+  return m.getAllAsync<Firm>('SELECT * FROM firms ORDER BY id');
+}
+export async function activeFirm(): Promise<Firm> {
+  const m = await getMeta();
+  const k = await m.getFirstAsync<{ value: string }>("SELECT value FROM kv WHERE key='active_firm'");
+  const f = await m.getFirstAsync<Firm>('SELECT * FROM firms WHERE id = ?', Number(k?.value || 1));
+  return f || (await m.getFirstAsync<Firm>('SELECT * FROM firms ORDER BY id LIMIT 1'))!;
+}
+export async function addFirm(name: string): Promise<number> {
+  const m = await getMeta();
+  const r = await m.runAsync("INSERT INTO firms(name,file) VALUES(?, 'pending')", name.trim() || 'New business');
+  await m.runAsync('UPDATE firms SET file = ? WHERE id = ?', `hisaab-${r.lastInsertRowId}.db`, r.lastInsertRowId);
+  return r.lastInsertRowId;
+}
+export async function switchFirm(id: number) {
+  const m = await getMeta();
+  await m.runAsync("INSERT OR REPLACE INTO kv(key,value) VALUES('active_firm', ?)", String(id));
+  dbp = null; // next getDb() opens the other file
+  notify();
+}
+export async function renameFirm(id: number, name: string) {
+  const m = await getMeta();
+  await m.runAsync('UPDATE firms SET name = ? WHERE id = ?', name.trim(), id);
+  notify();
+}
+
 export function getDb() {
   if (!dbp) dbp = init();
   return dbp;
 }
 
 async function init() {
-  const db = await SQLite.openDatabaseAsync('hisaab.db');
+  const firm = await activeFirm();
+  const db = await SQLite.openDatabaseAsync(firm.file);
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -45,11 +95,12 @@ async function init() {
       id INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, label TEXT NOT NULL, json TEXT NOT NULL
     );
   `);
+  try { await db.execAsync("ALTER TABLE items ADD COLUMN barcode TEXT NOT NULL DEFAULT ''"); } catch { /* already added */ }
   return db;
 }
 
 export type Party = { id: number; name: string; kind: string; gstin: string; phone: string; state_code: string };
-export type Item = { id: number; name: string; hsn: string; rate_paise: number; gst_percent: number; unit: string; stock: number };
+export type Item = { id: number; name: string; hsn: string; rate_paise: number; gst_percent: number; unit: string; stock: number; barcode?: string };
 export type Invoice = {
   id: number; no: string; kind: string; party_id: number; date: string; due_date: string;
   subtotal_paise: number; cgst_paise: number; sgst_paise: number; igst_paise: number;
@@ -101,13 +152,17 @@ export async function listItems(): Promise<Item[]> {
 export async function saveItem(i: Omit<Item, 'id'> & { id?: number }): Promise<number> {
   const db = await getDb();
   if (i.id) {
-    await db.runAsync('UPDATE items SET name=?, hsn=?, rate_paise=?, gst_percent=?, unit=?, stock=? WHERE id=?', i.name, i.hsn, i.rate_paise, i.gst_percent, i.unit, i.stock, i.id);
+    await db.runAsync('UPDATE items SET name=?, hsn=?, rate_paise=?, gst_percent=?, unit=?, stock=?, barcode=? WHERE id=?', i.name, i.hsn, i.rate_paise, i.gst_percent, i.unit, i.stock, i.barcode || '', i.id);
     notify();
     return i.id;
   }
-  const r = await db.runAsync('INSERT INTO items(name,hsn,rate_paise,gst_percent,unit,stock) VALUES(?,?,?,?,?,?)', i.name, i.hsn, i.rate_paise, i.gst_percent, i.unit, i.stock);
+  const r = await db.runAsync('INSERT INTO items(name,hsn,rate_paise,gst_percent,unit,stock,barcode) VALUES(?,?,?,?,?,?,?)', i.name, i.hsn, i.rate_paise, i.gst_percent, i.unit, i.stock, i.barcode || '');
   notify();
   return r.lastInsertRowId;
+}
+export async function findItemByBarcode(code: string): Promise<Item | null> {
+  const db = await getDb();
+  return (await db.getFirstAsync<Item>("SELECT * FROM items WHERE barcode = ? AND barcode <> ''", code)) || null;
 }
 export async function findItemByName(name: string): Promise<Item | null> {
   const db = await getDb();
@@ -150,6 +205,7 @@ export async function createInvoice(args: { partyId: number; kind?: string; line
       if (l.itemId && kind === 'purchase') await db.runAsync('UPDATE items SET stock = stock + ? WHERE id = ?', l.qty, l.itemId);
     }
   });
+  await countBill();
   await takeSnapshot(`Bill ${no} added`);
   notify();
   return id;
@@ -281,8 +337,23 @@ export async function restoreSnapshot(id: number) {
   notify();
 }
 
+// Free plan counts bills across ALL businesses together, kept in the shared meta database.
 export async function billsThisMonth(): Promise<number> {
-  const db = await getDb();
-  const r = await db.getFirstAsync<{ n: number }>("SELECT COUNT(*) AS n FROM invoices WHERE date LIKE ?", today().slice(0, 7) + '%');
+  const m = await getMeta();
+  const r = await m.getFirstAsync<{ n: number }>('SELECT n FROM bill_counts WHERE ym = ?', today().slice(0, 7));
   return r?.n || 0;
+}
+export async function countBill() {
+  const m = await getMeta();
+  await m.runAsync('INSERT INTO bill_counts(ym,n) VALUES(?,1) ON CONFLICT(ym) DO UPDATE SET n = n + 1', today().slice(0, 7));
+}
+
+export async function isOnboarded(): Promise<boolean> {
+  const m = await getMeta();
+  const r = await m.getFirstAsync<{ value: string }>("SELECT value FROM kv WHERE key='onboarded'");
+  return r?.value === '1';
+}
+export async function finishOnboarding() {
+  const m = await getMeta();
+  await m.runAsync("INSERT OR REPLACE INTO kv(key,value) VALUES('onboarded','1')");
 }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
@@ -7,6 +7,11 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
 import { SpaceGrotesk_700Bold } from '@expo-google-fonts/space-grotesk';
+import { Fraunces_700Bold } from '@expo-google-fonts/fraunces';
+import { isOnboarded, subscribe } from './src/db';
+import { refreshDueReminder } from './src/lib/reminders';
+import OnboardingScreen from './src/screens/OnboardingScreen';
+import ScanScreen from './src/screens/ScanScreen';
 import { C, F, Icon } from './src/ui';
 import { initPurchases } from './src/premium';
 
@@ -39,8 +44,12 @@ function Tabs() {
 }
 
 export default function App() {
-  const [ok] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, SpaceGrotesk_700Bold });
-  if (!ok) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={C.green} /></View>;
+  const [ok] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, SpaceGrotesk_700Bold, Fraunces_700Bold });
+  const [onb, setOnb] = useState<boolean | null>(null);
+  useEffect(() => { isOnboarded().then(setOnb).catch(() => setOnb(true)); }, []);
+  useEffect(() => { refreshDueReminder().catch(() => {}); return subscribe(() => { refreshDueReminder().catch(() => {}); }); }, []);
+  if (!ok || onb === null) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={C.green} /></View>;
+  if (!onb) return <SafeAreaProvider><OnboardingScreen onDone={() => setOnb(true)} /><StatusBar style="dark" /></SafeAreaProvider>;
   const hdr = { headerTitleStyle: { fontFamily: F.bold }, headerTintColor: C.ink, headerStyle: { backgroundColor: C.bg }, headerShadowVisible: false };
   return (
     <SafeAreaProvider>
@@ -52,6 +61,7 @@ export default function App() {
           <Stack.Screen name="AddParty" component={AddPartyScreen} options={{ title: 'Add party' }} />
           <Stack.Screen name="AddItem" component={AddItemScreen} options={{ title: 'Add item' }} />
           <Stack.Screen name="PaymentIn" component={PaymentScreen} options={{ title: 'Record payment' }} />
+          <Stack.Screen name="Scan" component={ScanScreen} options={{ title: 'Scan barcode' }} />
           <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
         </Stack.Navigator>
       </NavigationContainer>

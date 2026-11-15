@@ -15,8 +15,14 @@ Researched 15 Nov 2026 (web search; prices change, re-check before launch).
 Median of the direct mobile competitors is about ₹800 a year. Hisaab sits at or just under that.
 
 - Free tier: 20 bills a month, everything else (parties, items, reports, UPI link and QR, WhatsApp, backup history) free.
-- `default` offering: Annual ₹799 with 7-day trial, Monthly ₹99. Entitlement `premium`.
-- Variant offering `value` (50/50 experiment): Annual ₹599 with 7-day trial, Monthly ₹79.
-- Success metric: revenue per install and trial-to-paid, at least 28 days before calling a winner.
+- `default` offering: Annual ₹799, Monthly ₹99, no free trial. Entitlement `premium`.
+- Variant offering `value` (50/50 experiment): Annual ₹599, Monthly ₹79, no free trial.
+- Success metric: revenue per install and free-to-paid conversion, at least 28 days before calling a winner.
 - Other countries: set USD base price and let the stores equalise, then lower local prices in lower-income markets. Review by country in RevenueCat Charts after launch.
 - Product IDs (to create in App Store Connect and RevenueCat): `hisaab_annual`, `hisaab_monthly`, package ids `$rc_annual`, `$rc_monthly`.
+
+
+## Decision 15 Nov 2026 (Samay)
+- Free for life: every feature built today (themes, reminders and Remind all, barcode scan, voice input, multiple businesses), up to 50 bills a month in total across all businesses.
+- Premium (monthly or yearly, no trial): unlimited bills. RevenueCat paywall only when bill 51 of the month is saved. No upgrade messages before that.
+- Later Premium-only features: e-invoice and e-way bill, cloud sync across devices, multiple staff logins.

@@ -5,9 +5,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import { subscribe } from './db';
 
 export const C = {
-  bg: '#F5F6F2', card: '#FFFFFF', ink: '#101A15', muted: '#5A665F', border: '#E1E5DF',
-  green: '#0A6B4D', greenSoft: '#E3F1EA', greenDark: '#0A5239', due: '#B4491B', dueSoft: '#FBEBE2',
-};
+  bg: '#FFF6EE', card: '#FFFFFF', ink: '#2A1A10', muted: '#7A5C48', border: '#F2DCC9',
+  green: '#C2410C', greenSoft: '#FFE6D2', greenDark: '#8A2E08', due: '#B3261E', dueSoft: '#FDE4E1',
+}; // 'green' is the brand accent key; now a warm orange
 export const F = { reg: 'Inter_400Regular', med: 'Inter_500Medium', semi: 'Inter_600SemiBold', bold: 'Inter_700Bold', num: 'SpaceGrotesk_700Bold' };
 
 const ICONS: Record<string, string[]> = {
@@ -50,7 +50,7 @@ export function Field({ label, ...p }: TextInputProps & { label: string }) {
   return (
     <View style={{ gap: 4 }}>
       <Text style={s.label}>{label}</Text>
-      <TextInput {...p} placeholderTextColor="#7A857F" style={[s.input, p.style]} accessibilityLabel={label} />
+      <TextInput {...p} placeholderTextColor="#8A6B58" style={[s.input, p.style]} accessibilityLabel={label} />
     </View>
   );
 }

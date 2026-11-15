@@ -10,6 +10,7 @@ export default function PartiesScreen({ navigation }: any) {
   const [tab, setTab] = useState<'sale' | 'purchase'>('sale');
   const dues = useLive(() => listDues(tab), [] as Awaited<ReturnType<typeof listDues>>);
   const biz = useLive(() => getSetting('business_name'), '');
+  const [qi, setQi] = useState(0);
   const total = dues.reduce((a, b) => a + b.duePaise, 0);
   const remind = (p: { name: string; phone: string }, due: number) => {
     const ph = (p.phone || '').replace(/\D/g, '');
@@ -19,7 +20,7 @@ export default function PartiesScreen({ navigation }: any) {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 20, paddingTop: insets.top + 12, gap: 14 }}>
       <Text style={{ fontFamily: F.bold, fontSize: 22, color: C.ink }}>Parties</Text>
-      <View style={{ flexDirection: 'row', backgroundColor: '#E9ECE6', borderRadius: 12, padding: 3 }}>
+      <View style={{ flexDirection: 'row', backgroundColor: '#FBE9D8', borderRadius: 12, padding: 3 }}>
         {(['sale', 'purchase'] as const).map((k) => (
           <Pressable key={k} accessibilityRole="button" onPress={() => setTab(k)} style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: tab === k ? '#fff' : 'transparent' }}>
             <Text style={{ fontFamily: F.semi, fontSize: 13, color: tab === k ? C.ink : C.muted }}>{k === 'sale' ? 'To receive' : 'To pay'}</Text>
@@ -45,6 +46,10 @@ export default function PartiesScreen({ navigation }: any) {
           </Card>
         );
       })}
+      {tab === 'sale' && dues.length > 1 && (
+        <Btn label={qi < dues.length ? `Remind ${dues[qi].party.name} (${qi + 1} of ${dues.length})` : 'All reminders sent. Start again'}
+          onPress={() => { if (qi >= dues.length) { setQi(0); return; } remind(dues[qi].party, dues[qi].duePaise); setQi(qi + 1); }} />
+      )}
       <Btn kind="ghost" label="Add party" onPress={() => navigation.navigate('AddParty')} />
       <Btn kind="ghost" label={tab === 'sale' ? 'Record payment received' : 'Record payment made'} onPress={() => navigation.navigate('PaymentIn', { direction: tab === 'sale' ? 'in' : 'out' })} />
     </ScrollView>

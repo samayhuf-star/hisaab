@@ -15,6 +15,7 @@ export default function ShareScreen({ route, navigation }: any) {
   const biz = useLive(() => getSetting('business_name'), '');
   const gstin = useLive(() => getSetting('gstin'), '');
   const upi = useLive(() => getSetting('upi_id'), '');
+  const theme = useLive(() => getSetting('invoice_theme', 'classic'), 'classic');
   if (!data) return <View style={{ flex: 1, backgroundColor: C.bg }} />;
   const { inv, lines, party } = data;
   const due = inv.total_paise - inv.paid_paise;
@@ -28,7 +29,8 @@ export default function ShareScreen({ route, navigation }: any) {
   }
   async function pdf() {
     const rows = lines.map((l) => `<tr><td>${esc(l.name)}</td><td>${l.qty}</td><td>${formatRupees(l.rate_paise, true)}</td><td>${l.gst_percent}%</td><td>${formatRupees(Math.round(l.qty * l.rate_paise), true)}</td></tr>`).join('');
-    const html = `<html><body style="font-family:Helvetica;padding:24px"><h2>${esc(biz || 'Invoice')}</h2><p>${gstin ? 'GSTIN ' + esc(gstin) : ''}</p>
+    const T = theme === 'warm' ? { a: '#C2410C', bg: '#FFF6EE', f: 'Georgia,serif' } : theme === 'mono' ? { a: '#111111', bg: '#FFFFFF', f: 'Courier New,monospace' } : { a: '#0F3D5E', bg: '#FFFFFF', f: 'Helvetica,Arial,sans-serif' };
+    const html = `<html><body style="font-family:${T.f};padding:24px;background:${T.bg};color:#222"><h2 style="color:${T.a};border-bottom:3px solid ${T.a};padding-bottom:6px">${esc(biz || 'Invoice')}</h2><p>${gstin ? 'GSTIN ' + esc(gstin) : ''}</p>
       <p><b>${esc(inv.no)}</b> · ${inv.date}<br/>Bill to: ${esc(party.name)} ${party.gstin ? '(' + esc(party.gstin) + ')' : ''}</p>
       <table width="100%" border="1" cellspacing="0" cellpadding="6"><tr><th>Item</th><th>Qty</th><th>Rate</th><th>GST</th><th>Amount</th></tr>${rows}</table>
       <p>Subtotal ${formatRupees(inv.subtotal_paise, true)}<br/>${inv.igst_paise ? 'IGST ' + formatRupees(inv.igst_paise, true) : 'CGST ' + formatRupees(inv.cgst_paise, true) + '<br/>SGST ' + formatRupees(inv.sgst_paise, true)}<br/>Round off ${formatRupees(inv.round_off_paise, true)}</p>
