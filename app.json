@@ -9,13 +9,13 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.samay.hisaab",
-      "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "LSApplicationQueriesSchemes": [
           "whatsapp",
           "upi"
-        ]
+        ],
+        "NSPhotoLibraryUsageDescription": "Hisaab accesses your photos only if you choose an image yourself, for example to read a barcode from a saved picture. It never browses your library."
       }
     },
     "android": {
