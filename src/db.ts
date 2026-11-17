@@ -108,7 +108,9 @@ export type Invoice = {
 };
 export type InvLine = { id: number; invoice_id: number; item_id: number | null; name: string; hsn: string; qty: number; rate_paise: number; gst_percent: number };
 
-export const today = () => new Date().toISOString().slice(0, 10);
+// Local calendar date (India users bill after midnight; UTC dates would put those bills on the wrong day).
+export const isoDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+export const today = () => isoDate(new Date());
 
 export async function getSetting(key: string, fallback = ''): Promise<string> {
   const db = await getDb();
@@ -138,9 +140,16 @@ export async function saveParty(p: Omit<Party, 'id'> & { id?: number }): Promise
   notify();
   return r.lastInsertRowId;
 }
+export async function findPartyExact(name: string): Promise<Party | null> {
+  const db = await getDb();
+  const all = await db.getAllAsync<Party>('SELECT * FROM parties');
+  const n = name.trim().toLowerCase();
+  return all.find((p) => p.name.trim().toLowerCase() === n) || null;
+}
 export async function findPartyByName(name: string): Promise<Party | null> {
   const db = await getDb();
   const base = name.toLowerCase().replace(/\bji\b/g, '').trim();
+  if (!base) return null;
   const all = await db.getAllAsync<Party>('SELECT * FROM parties');
   return all.find((p) => p.name.toLowerCase().includes(base)) || null;
 }
@@ -191,7 +200,7 @@ export async function createInvoice(args: { partyId: number; kind?: string; line
   const t = computeTotals(lines, isInterState(sellerState, party.state_code));
   const no = await nextInvoiceNo(kind);
   const d = new Date();
-  const due = new Date(d.getTime() + (args.dueDays ?? 15) * 86400000).toISOString().slice(0, 10);
+  const due = isoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + (args.dueDays ?? 15)));
   let id = 0;
   await db.withTransactionAsync(async () => {
     const r = await db.runAsync(
@@ -285,8 +294,9 @@ export async function weeklySales(): Promise<{ label: string; paise: number }[]>
   const out: { label: string; paise: number }[] = [];
   const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86400000);
-    const iso = d.toISOString().slice(0, 10);
+    const n = new Date();
+    const d = new Date(n.getFullYear(), n.getMonth(), n.getDate() - i);
+    const iso = isoDate(d);
     const r = await db.getFirstAsync<{ t: number | null }>("SELECT SUM(total_paise) AS t FROM invoices WHERE kind='sale' AND date = ?", iso);
     out.push({ label: names[d.getDay()], paise: r?.t || 0 });
   }

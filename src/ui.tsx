@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View, ViewStyle, TextInputProps } from 'react-native';
-import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import Svg, { Path, Circle } from 'react-native-svg';
 import { useFocusEffect } from '@react-navigation/native';
 import { subscribe } from './db';
 

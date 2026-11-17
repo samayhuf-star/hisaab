@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { C, F, Btn, Field, Card, useLive } from '../ui';
-import { listItems, listParties, recordPayment, saveItem, saveParty, getSetting, setSetting, renameFirm, listFirms, activeFirm, addFirm, switchFirm } from '../db';
+import { listParties, recordPayment, saveItem, saveParty, getSetting, setSetting, renameFirm, listFirms, activeFirm, addFirm, switchFirm } from '../db';
 import { enableDueReminders, refreshDueReminder } from '../lib/reminders';
 import { isValidGstin } from '../lib/gst';
 import { openCustomerCenter, openPaywall, restore } from '../premium';

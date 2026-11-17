@@ -10,8 +10,8 @@ export default function HomeScreen({ navigation }: any) {
   const d = useLive(dashboard, { todayPaise: 0, todayCount: 0, todayPaid: 0, receivePaise: 0, receiveParties: 0, payPaise: 0, payParties: 0 });
   const biz = useLive(() => getSetting('business_name'), '');
   const recent = useLive(() => recentInvoices(5), [] as Awaited<ReturnType<typeof recentInvoices>>);
-  const Quick = ({ icon, label, to, primary }: { icon: string; label: string; to: string; primary?: boolean }) => (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={() => navigation.navigate(to)}
+  const quick = (icon: string, label: string, to: string, primary?: boolean) => (
+    <Pressable key={to} accessibilityRole="button" accessibilityLabel={label} onPress={() => navigation.navigate(to)}
       style={{ flex: 1, alignItems: 'center', gap: 6, paddingVertical: 12, borderRadius: 14, backgroundColor: primary ? C.greenSoft : C.card, borderWidth: primary ? 0 : 1, borderColor: C.border }}>
       <Icon name={icon} color={primary ? C.green : C.ink} />
       <Text style={{ fontFamily: F.semi, fontSize: 12, color: primary ? C.green : C.ink }}>{label}</Text>
@@ -41,7 +41,7 @@ export default function HomeScreen({ navigation }: any) {
         </Card>
       </Pressable>
       <View style={{ backgroundColor: C.green, borderRadius: 20, padding: 18, gap: 6 }}>
-        <Text style={{ fontFamily: F.reg, fontSize: 13, color: '#fff' }}>Today's sales</Text>
+        <Text style={{ fontFamily: F.reg, fontSize: 13, color: '#fff' }}>Today&apos;s sales</Text>
         <Text style={{ fontFamily: F.num, fontSize: 34, color: '#fff' }}>{formatRupees(d.todayPaise)}</Text>
         <Text style={{ fontFamily: F.reg, fontSize: 13, color: '#fff' }}>{d.todayCount} bills, {d.todayPaid} paid, {d.todayCount - d.todayPaid} pending</Text>
       </View>
@@ -58,10 +58,10 @@ export default function HomeScreen({ navigation }: any) {
         </Card>
       </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Quick icon="bill" label="New bill" to="NewBill" primary />
-        <Quick icon="cash" label="Payment in" to="PaymentIn" />
-        <Quick icon="items" label="Add item" to="AddItem" />
-        <Quick icon="parties" label="Add party" to="AddParty" />
+        {quick("bill", "New bill", "NewBill", true)}
+        {quick("cash", "Payment in", "PaymentIn")}
+        {quick("items", "Add item", "AddItem")}
+        {quick("parties", "Add party", "AddParty")}
       </View>
       <Text style={{ fontFamily: F.bold, fontSize: 14, color: C.ink }}>Recent</Text>
       {recent.length === 0 && <Text style={{ fontFamily: F.reg, fontSize: 13, color: C.muted }}>No bills yet. Create your first bill above.</Text>}

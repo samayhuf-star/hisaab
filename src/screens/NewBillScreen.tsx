@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, F, Btn, Card, Field } from '../ui';
-import { billsThisMonth, createInvoice, findItemByBarcode, findItemByName, findPartyByName, getSetting, saveParty, NewLine, Party } from '../db';
+import { billsThisMonth, createInvoice, findItemByBarcode, findItemByName, findPartyByName, findPartyExact, getSetting, saveParty, NewLine, Party } from '../db';
 import { parseHinglishBill } from '../lib/hinglish';
 import { computeTotals, isInterState } from '../lib/gst';
 import { formatRupees } from '../lib/format';
@@ -90,6 +90,7 @@ export default function NewBillScreen({ navigation, route }: any) {
     try {
       if (!(await ensureCanBill(await billsThisMonth()))) { setBusy(false); return; }
       let pid = party?.id;
+      if (!pid) pid = (await findPartyExact(partyName))?.id;
       if (!pid) pid = await saveParty({ name: partyName.trim(), kind: 'customer', gstin: '', phone: '', state_code: '' });
       const id = await createInvoice({ partyId: pid, lines: full });
       navigation.replace('Share', { id });
