@@ -35,7 +35,14 @@
       "expo-sqlite",
       "expo-sharing",
       "expo-font",
-      "expo-splash-screen",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "backgroundColor": "#FFF5EA"
+        }
+      ],
       [
         "expo-camera",
         {
