@@ -26,3 +26,7 @@ Median of the direct mobile competitors is about ₹800 a year. Hisaab sits at o
 - Free for life: every feature built today (themes, reminders and Remind all, barcode scan, voice input, multiple businesses), up to 50 bills a month in total across all businesses.
 - Premium (monthly or yearly, no trial): unlimited bills. RevenueCat paywall only when bill 51 of the month is saved. No upgrade messages before that.
 - Later Premium-only features: e-invoice and e-way bill, cloud sync across devices, multiple staff logins.
+
+## Setup status 17 Nov 2026
+- RevenueCat project "Hisaab" (96887c41), iOS app appe18729def2, entitlement `premium`, offering `default` ($rc_monthly = hisaab_monthly, $rc_annual = hisaab_yearly) with a RevenueCat paywall attached.
+- App Store Connect: subscription group "Hisaab Premium", products hisaab_monthly (₹99) and hisaab_yearly (₹799), 175 territories, equalized from India price. Still needs a review screenshot before submission.
