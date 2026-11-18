@@ -99,3 +99,30 @@ describe('parseHinglishBill', () => {
     expect(r.lines).toEqual([]);
   });
 });
+
+import { parseCommand, parsePartyCommand } from '../lib/hinglish';
+describe('voice parsing v2', () => {
+  test('lump sum with spoken GST', () => {
+    const p = parseHinglishBill('Rakesh Ko 10,000 Kab Bhejo sant Ek rate das hazar Aur G thara percent Aur total bill dikhao');
+    expect(p.party).toBe('Rakesh');
+    expect(p.gstPercent).toBe(18);
+    const base = p.amountPaise ?? p.lines.reduce((a, l) => a + (l.ratePaise ?? 0) * l.qty, 0);
+    expect(base).toBe(1000000);
+  });
+  test('simple lump', () => {
+    const p = parseHinglishBill('Rakesh ko 10000 ka bill 18 percent GST');
+    expect(p.amountPaise).toBe(1000000);
+    expect(p.gstPercent).toBe(18);
+  });
+  test('add party command', () => {
+    const c = parsePartyCommand('add party Rakesh phone 9876543210 email rakesh at gmail dot com GST yes 18 percent');
+    expect(c?.name).toBe('Rakesh');
+    expect(c?.phone).toBe('9876543210');
+    expect(c?.email).toBe('rakesh@gmail.com');
+    expect(c?.gstPercent).toBe(18);
+  });
+  test('routing', () => {
+    expect(parseCommand('Gupta ji ko 20 bulb ka bill').kind).toBe('bill');
+    expect(parseCommand('hello there').kind).toBe('unknown');
+  });
+});

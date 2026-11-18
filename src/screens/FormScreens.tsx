@@ -13,28 +13,58 @@ const Wrap = ({ children }: { children: React.ReactNode }) => (
   </KeyboardAvoidingView>
 );
 
-export function AddPartyScreen({ navigation }: any) {
-  const [name, setName] = useState(''); const [phone, setPhone] = useState(''); const [gstin, setGstin] = useState('');
-  const [kind, setKind] = useState<'customer' | 'supplier'>('customer');
+export function AddPartyScreen({ navigation, route }: any) {
+  const pre = route?.params?.prefill || {};
+  const [name, setName] = useState<string>(pre.name || ''); const [phone, setPhone] = useState<string>(pre.phone || '');
+  const [email, setEmail] = useState<string>(pre.email || ''); const [gstin, setGstin] = useState<string>(pre.gstin || '');
+  const [hasGst, setHasGst] = useState<boolean | null>(pre.gstRegistered ?? null);
+  const [pct, setPct] = useState<string>(String(pre.gstPercent ?? 18));
+  const [kind, setKind] = useState<'customer' | 'supplier'>(pre.kind || 'customer');
+  const chip = (on: boolean) => ({ minHeight: 44, paddingHorizontal: 16, alignItems: 'center' as const, justifyContent: 'center' as const, borderRadius: 12, backgroundColor: on ? C.greenSoft : C.card, borderWidth: 1, borderColor: on ? C.green : C.border });
   async function save() {
     if (!name.trim()) return Alert.alert('Name needed');
+    if (hasGst === null) return Alert.alert('GST?', 'Tell us whether this party has GST: tap Yes or No.');
     const g = gstin.trim().toUpperCase();
-    if (g && !isValidGstin(g)) return Alert.alert('Check GSTIN', 'This GSTIN does not look valid. Fix it or leave it empty.');
-    await saveParty({ name: name.trim(), kind, phone: phone.trim(), gstin: g, state_code: g ? g.slice(0, 2) : '' });
+    if (hasGst && g && !isValidGstin(g)) return Alert.alert('Check GSTIN', 'This GSTIN does not look valid. Fix it or leave it empty.');
+    const e = email.trim();
+    if (e && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e)) return Alert.alert('Check email', 'This email does not look right.');
+    const rate = Math.max(0, Math.min(40, parseFloat(pct) || 0));
+    await saveParty({
+      name: name.trim(), kind, phone: phone.trim(), email: e, gstin: hasGst ? g : '', state_code: hasGst && g ? g.slice(0, 2) : '',
+      gst_registered: hasGst ? 1 : 0, gst_percent: hasGst ? rate : 0,
+    });
     navigation.goBack();
   }
   return (
     <Wrap>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         {(['customer', 'supplier'] as const).map((k) => (
-          <Pressable key={k} accessibilityRole="button" onPress={() => setKind(k)} style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: kind === k ? C.greenSoft : C.card, borderWidth: 1, borderColor: kind === k ? C.green : C.border }}>
+          <Pressable key={k} accessibilityRole="button" onPress={() => setKind(k)} style={[chip(kind === k), { flex: 1 }]}>
             <Text style={{ fontFamily: F.semi, color: kind === k ? C.green : C.ink }}>{k === 'customer' ? 'Customer' : 'Supplier'}</Text>
           </Pressable>
         ))}
       </View>
       <Field label="Name" value={name} onChangeText={setName} />
-      <Field label="Phone (for WhatsApp)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-      <Field label="GSTIN (optional)" value={gstin} onChangeText={setGstin} autoCapitalize="characters" />
+      <Field label="Mobile number (WhatsApp)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
+      <Field label="Email (to send bills)" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+      <Text style={{ fontFamily: F.semi, color: C.ink, marginTop: 4 }}>Does this party have GST?</Text>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Pressable accessibilityRole="button" onPress={() => setHasGst(true)} style={[chip(hasGst === true), { flex: 1 }]}><Text style={{ fontFamily: F.semi, color: hasGst === true ? C.green : C.ink }}>Yes, has GST</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => setHasGst(false)} style={[chip(hasGst === false), { flex: 1 }]}><Text style={{ fontFamily: F.semi, color: hasGst === false ? C.green : C.ink }}>No GST</Text></Pressable>
+      </View>
+      {hasGst === true && (
+        <>
+          <Field label="GSTIN" value={gstin} onChangeText={setGstin} autoCapitalize="characters" />
+          <Text style={{ fontFamily: F.semi, color: C.ink }}>GST rate on bills</Text>
+          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+            {['5', '12', '18', '28'].map((r) => (
+              <Pressable key={r} accessibilityRole="button" onPress={() => setPct(r)} style={chip(pct === r)}><Text style={{ fontFamily: F.semi, color: pct === r ? C.green : C.ink }}>{r}%</Text></Pressable>
+            ))}
+          </View>
+          <Field label="Other rate %" value={pct} onChangeText={setPct} keyboardType="decimal-pad" />
+        </>
+      )}
+      {hasGst === false && <Text style={{ fontFamily: F.reg, color: C.muted }}>Bills for this party will be a Bill of supply with no GST.</Text>}
       <Btn label="Save party" onPress={save} />
     </Wrap>
   );

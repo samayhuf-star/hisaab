@@ -21,6 +21,7 @@ const ICONS: Record<string, string[]> = {
   plus: ['M12 5v14', 'M5 12h14'],
   bill: ['M6 3h9l4 4v14H6z', 'M12 11v6', 'M9 14h6'],
   cash: ['M3 7h18v11H3z'],
+  mic: ['M9 4a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0z', 'M5 11a7 7 0 0 0 14 0', 'M12 18v3'],
   settings: ['M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z', 'M19 12h2M3 12h2M12 3v2M12 19v2'],
 };
 export function Icon({ name, color = C.ink, size = 22 }: { name: string; color?: string; size?: number }) {

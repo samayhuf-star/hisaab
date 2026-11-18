@@ -11,7 +11,8 @@ import { onScan } from '../lib/scan';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 
 type Row = { itemId: number | null; name: string; hsn: string; qty: string; rate: string; gst: string };
-const blank = (): Row => ({ itemId: null, name: '', hsn: '', qty: '1', rate: '', gst: '18' });
+// gst '' means "use the party's GST setting"
+const blank = (): Row => ({ itemId: null, name: '', hsn: '', qty: '1', rate: '', gst: '' });
 
 export default function NewBillScreen({ navigation, route }: any) {
   const insets = useSafeAreaInsets();
@@ -22,6 +23,18 @@ export default function NewBillScreen({ navigation, route }: any) {
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [listening, setListening] = useState(false);
+  const [newHasGst, setNewHasGst] = useState<boolean | null>(null);
+  const [newPct, setNewPct] = useState('18');
+  const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const autoRan = React.useRef(false);
+  React.useEffect(() => {
+    const t = route?.params?.text;
+    if (t && !autoRan.current) { autoRan.current = true; setText(t); understand(t); }
+  }, []);
+  // GST rate that applies to every line without its own rate: from the saved party, or from the choice made for a new party.
+  const partyPct = party ? (party.gst_registered ? (party.gst_percent ?? 18) : 0) : newHasGst === false ? 0 : newHasGst === true ? (parseFloat(newPct) || 0) : 18;
+  const effGst = (r: Row) => (r.gst.trim() === '' ? partyPct : parseFloat(r.gst) || 0);
 
   useSpeechRecognitionEvent('start', () => setListening(true));
   useSpeechRecognitionEvent('end', () => setListening(false));
@@ -47,30 +60,32 @@ export default function NewBillScreen({ navigation, route }: any) {
     navigation.navigate('Scan');
   }
 
-  async function understand() {
-    const p = parseHinglishBill(text);
+  async function understand(input?: string) {
+    const p = parseHinglishBill(input ?? text);
     if (!p.party) { setNote('Could not find a party name. Try: "Gupta ji ko 20 bulb ka bill".'); return; }
     const found = await findPartyByName(p.party);
     setParty(found);
     setPartyName(found ? found.name : p.party);
+    // A GST rate said out loud wins; otherwise the party's own setting applies.
+    const spoken = p.noGst ? '0' : p.gstPercent !== null ? String(p.gstPercent) : '';
+    if (!found && spoken !== '') { setNewHasGst(spoken !== '0'); if (spoken !== '0') setNewPct(spoken); }
+    const rowGst = found ? spoken : '';
     const out: Row[] = [];
     if (p.amountPaise !== null) {
-      const gst = 18;
-      const rate = Math.round(p.amountPaise / (1 + gst / 100));
-      out.push({ itemId: null, name: 'Goods / services', hsn: '', qty: '1', rate: String(rate / 100), gst: String(gst) });
+      // "10,000 ka bill" = 10,000 before GST; GST is added on top.
+      out.push({ itemId: null, name: 'Goods / services', hsn: '', qty: '1', rate: String(p.amountPaise / 100), gst: rowGst });
     }
     for (const l of p.lines) {
       const it = await findItemByName(l.item);
-      out.push(it
-        ? { itemId: it.id, name: it.name, hsn: it.hsn, qty: String(l.qty), rate: String(it.rate_paise / 100), gst: String(it.gst_percent) }
-        : { itemId: null, name: l.item, hsn: '', qty: String(l.qty), rate: '', gst: '18' });
+      const rate = l.ratePaise !== undefined ? String(l.ratePaise / 100) : it ? String(it.rate_paise / 100) : '';
+      out.push({ itemId: it ? it.id : null, name: it ? it.name : l.item, hsn: it ? it.hsn : '', qty: String(l.qty), rate, gst: rowGst || (it && found ? String(it.gst_percent) : '') });
     }
     setRows(out.length ? out : [blank()]);
-    setNote(`Understood: ${found ? 'party found' : 'new party'}, ${out.length} item(s). Check and edit below.`);
+    setNote(`Understood: ${found ? 'party found' : 'new party, choose GST below'}, ${out.length} item(s). Check and edit below.`);
   }
 
   const upd = (i: number, k: keyof Row, v: string) => setRows((r) => r.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
-  const lines = rows.map((r) => ({ qty: parseFloat(r.qty) || 0, ratePaise: Math.round((parseFloat(r.rate) || 0) * 100), gstPercent: parseFloat(r.gst) || 0 }));
+  const lines = rows.map((r) => ({ qty: parseFloat(r.qty) || 0, ratePaise: Math.round((parseFloat(r.rate) || 0) * 100), gstPercent: effGst(r) }));
   const valid = lines.filter((l) => l.qty > 0);
   const [sellerState, setSellerState] = useState('');
   React.useEffect(() => { getSetting('state_code').then(setSellerState); }, []);
@@ -78,6 +93,7 @@ export default function NewBillScreen({ navigation, route }: any) {
 
   async function save() {
     if (!partyName.trim()) { Alert.alert('Party needed', 'Enter who the bill is for.'); return; }
+    if (!party && !(await findPartyExact(partyName)) && newHasGst === null) { Alert.alert('GST?', 'Tap Yes or No: does this party have GST?'); return; }
     const full: NewLine[] = [];
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i]; const l = lines[i];
@@ -91,7 +107,7 @@ export default function NewBillScreen({ navigation, route }: any) {
       if (!(await ensureCanBill(await billsThisMonth()))) { setBusy(false); return; }
       let pid = party?.id;
       if (!pid) pid = (await findPartyExact(partyName))?.id;
-      if (!pid) pid = await saveParty({ name: partyName.trim(), kind: 'customer', gstin: '', phone: '', state_code: '' });
+      if (!pid) pid = await saveParty({ name: partyName.trim(), kind: 'customer', gstin: '', phone: newPhone.trim(), email: newEmail.trim(), state_code: '', gst_registered: newHasGst ? 1 : 0, gst_percent: newHasGst ? parseFloat(newPct) || 0 : 0 });
       const id = await createInvoice({ partyId: pid, lines: full });
       navigation.replace('Share', { id });
     } catch (e: any) {
@@ -109,18 +125,44 @@ export default function NewBillScreen({ navigation, route }: any) {
             <Btn kind="ghost" label={listening ? 'Listening... tap to stop' : 'Speak'} onPress={toggleMic} style={{ flex: 1, minHeight: 44 }} />
             <Btn kind="ghost" label="Scan item" onPress={scanItem} style={{ flex: 1, minHeight: 44 }} />
           </View>
-          <Btn label="Understand" onPress={understand} disabled={!text.trim()} style={{ minHeight: 44 }} />
+          <Btn label="Understand" onPress={() => understand()} disabled={!text.trim()} style={{ minHeight: 44 }} />
         </Card>
         {!!note && <Text style={{ fontFamily: F.semi, fontSize: 12, color: C.green }}>{note}</Text>}
         <Field label="Party" value={partyName} onChangeText={setPartyName} placeholder="Customer name" />
-        {party && <Text style={{ fontFamily: F.reg, fontSize: 12, color: C.muted }}>{party.gstin ? `GSTIN ${party.gstin}` : 'No GSTIN saved'}</Text>}
+        {party ? (
+          <Text style={{ fontFamily: F.reg, fontSize: 12, color: C.muted }}>
+            {partyPct === 0 ? 'No GST party: Bill of supply, no tax' : `${party.gstin ? `GSTIN ${party.gstin} · ` : ''}GST ${partyPct}%`}{party.phone ? ` · ${party.phone}` : ''}{party.email ? ` · ${party.email}` : ''}
+          </Text>
+        ) : partyName.trim() ? (
+          <Card style={{ gap: 8 }}>
+            <Text style={{ fontFamily: F.semi, color: C.ink }}>New party. Does {partyName.trim()} have GST?</Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {([true, false] as const).map((v) => (
+                <Pressable key={String(v)} accessibilityRole="button" onPress={() => setNewHasGst(v)} style={{ flex: 1, minHeight: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: newHasGst === v ? C.greenSoft : C.card, borderWidth: 1, borderColor: newHasGst === v ? C.green : C.border }}>
+                  <Text style={{ fontFamily: F.semi, color: newHasGst === v ? C.green : C.ink }}>{v ? 'Yes, has GST' : 'No GST'}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {newHasGst === true && (
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+                {['5', '12', '18', '28'].map((r) => (
+                  <Pressable key={r} accessibilityRole="button" onPress={() => setNewPct(r)} style={{ minHeight: 44, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: newPct === r ? C.greenSoft : C.card, borderWidth: 1, borderColor: newPct === r ? C.green : C.border }}>
+                    <Text style={{ fontFamily: F.semi, color: newPct === r ? C.green : C.ink }}>{r}%</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            <Field label="Mobile (WhatsApp)" value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" />
+            <Field label="Email (to send bills)" value={newEmail} onChangeText={setNewEmail} keyboardType="email-address" autoCapitalize="none" />
+          </Card>
+        ) : null}
         {rows.map((r, i) => (
           <Card key={i} style={{ gap: 8 }}>
             <Field label={`Item ${i + 1}`} value={r.name} onChangeText={(v) => upd(i, 'name', v)} placeholder="Item name" />
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <View style={{ flex: 1 }}><Field label="Qty" value={r.qty} onChangeText={(v) => upd(i, 'qty', v)} keyboardType="decimal-pad" /></View>
               <View style={{ flex: 1.4 }}><Field label="Rate (₹)" value={r.rate} onChangeText={(v) => upd(i, 'rate', v)} keyboardType="decimal-pad" /></View>
-              <View style={{ flex: 1 }}><Field label="GST %" value={r.gst} onChangeText={(v) => upd(i, 'gst', v)} keyboardType="decimal-pad" /></View>
+              <View style={{ flex: 1 }}><Field label="GST %" value={r.gst} onChangeText={(v) => upd(i, 'gst', v)} keyboardType="decimal-pad" placeholder={String(partyPct)} /></View>
             </View>
             {rows.length > 1 && (
               <Pressable accessibilityRole="button" accessibilityLabel={`Remove item ${i + 1}`} onPress={() => setRows((x) => x.filter((_, j) => j !== i))} style={{ minHeight: 44, justifyContent: 'center' }}>

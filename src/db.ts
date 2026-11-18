@@ -96,10 +96,18 @@ async function init() {
     );
   `);
   try { await db.execAsync("ALTER TABLE items ADD COLUMN barcode TEXT NOT NULL DEFAULT ''"); } catch { /* already added */ }
+  try { await db.execAsync("ALTER TABLE parties ADD COLUMN email TEXT NOT NULL DEFAULT ''"); } catch { /* already added */ }
+  try { await db.execAsync('ALTER TABLE parties ADD COLUMN gst_registered INTEGER NOT NULL DEFAULT 0'); } catch { /* already added */ }
+  try { await db.execAsync('ALTER TABLE parties ADD COLUMN gst_percent INTEGER NOT NULL DEFAULT 18'); } catch { /* already added */ }
+  // Parties saved before these columns existed: treat a saved GSTIN as "has GST".
+  try { await db.execAsync("UPDATE parties SET gst_registered = 1 WHERE gstin <> '' AND gst_registered = 0"); } catch { /* ignore */ }
   return db;
 }
 
-export type Party = { id: number; name: string; kind: string; gstin: string; phone: string; state_code: string };
+export type Party = {
+  id: number; name: string; kind: string; gstin: string; phone: string; state_code: string;
+  email?: string; gst_registered?: number; gst_percent?: number;
+};
 export type Item = { id: number; name: string; hsn: string; rate_paise: number; gst_percent: number; unit: string; stock: number; barcode?: string };
 export type Invoice = {
   id: number; no: string; kind: string; party_id: number; date: string; due_date: string;
@@ -132,11 +140,11 @@ export async function listParties(kind?: string): Promise<Party[]> {
 export async function saveParty(p: Omit<Party, 'id'> & { id?: number }): Promise<number> {
   const db = await getDb();
   if (p.id) {
-    await db.runAsync('UPDATE parties SET name=?, kind=?, gstin=?, phone=?, state_code=? WHERE id=?', p.name, p.kind, p.gstin, p.phone, p.state_code, p.id);
+    await db.runAsync('UPDATE parties SET name=?, kind=?, gstin=?, phone=?, state_code=?, email=?, gst_registered=?, gst_percent=? WHERE id=?', p.name, p.kind, p.gstin, p.phone, p.state_code, p.email ?? '', p.gst_registered ?? 0, p.gst_percent ?? 18, p.id);
     notify();
     return p.id;
   }
-  const r = await db.runAsync('INSERT INTO parties(name,kind,gstin,phone,state_code) VALUES(?,?,?,?,?)', p.name, p.kind, p.gstin, p.phone, p.state_code);
+  const r = await db.runAsync('INSERT INTO parties(name,kind,gstin,phone,state_code,email,gst_registered,gst_percent) VALUES(?,?,?,?,?,?,?,?)', p.name, p.kind, p.gstin, p.phone, p.state_code, p.email ?? '', p.gst_registered ?? 0, p.gst_percent ?? 18);
   notify();
   return r.lastInsertRowId;
 }

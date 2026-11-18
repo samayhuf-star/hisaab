@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { Fraunces_700Bold } from '@expo-google-fonts/fraunces';
 import { isOnboarded, subscribe } from './src/db';
 import { refreshDueReminder } from './src/lib/reminders';
 import OnboardingScreen from './src/screens/OnboardingScreen';
+import VoiceAssistant from './src/components/VoiceAssistant';
 import ScanScreen from './src/screens/ScanScreen';
 import { C, F, Icon } from './src/ui';
 import { initPurchases } from './src/premium';
@@ -25,6 +26,7 @@ import ReportsScreen from './src/screens/ReportsScreen';
 import BackupScreen from './src/screens/BackupScreen';
 import { AddItemScreen, AddPartyScreen, PaymentScreen, SettingsScreen } from './src/screens/FormScreens';
 
+const navRef = createNavigationContainerRef<any>();
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
@@ -46,6 +48,7 @@ function Tabs() {
 export default function App() {
   const [ok] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, SpaceGrotesk_700Bold, Fraunces_700Bold });
   const [onb, setOnb] = useState<boolean | null>(null);
+  const [route, setRoute] = useState('Tabs');
   useEffect(() => { isOnboarded().then(setOnb).catch(() => setOnb(true)); }, []);
   useEffect(() => { refreshDueReminder().catch(() => {}); return subscribe(() => { refreshDueReminder().catch(() => {}); }); }, []);
   if (!ok || onb === null) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={C.green} /></View>;
@@ -53,7 +56,7 @@ export default function App() {
   const hdr = { headerTitleStyle: { fontFamily: F.bold }, headerTintColor: C.ink, headerStyle: { backgroundColor: C.bg }, headerShadowVisible: false };
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navRef} onStateChange={() => setRoute(navRef.getCurrentRoute()?.name || 'Tabs')} onReady={() => setRoute(navRef.getCurrentRoute()?.name || 'Tabs')}>
         <Stack.Navigator screenOptions={hdr}>
           <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
           <Stack.Screen name="NewBill" component={NewBillScreen} options={{ title: 'New bill' }} />
@@ -65,6 +68,12 @@ export default function App() {
           <Stack.Screen name="Settings" component={SettingsScreen} options={{ title: 'Settings' }} />
         </Stack.Navigator>
       </NavigationContainer>
+      {['Tabs', 'Home', 'Parties', 'Items', 'Reports', 'Backup'].includes(route) && (
+        <VoiceAssistant onCommand={(c) => {
+          if (c.kind === 'bill') navRef.navigate('NewBill', { text: c.text, at: Date.now() });
+          else if (c.kind === 'party') navRef.navigate('AddParty', { prefill: c.party, at: Date.now() });
+        }} />
+      )}
       <StatusBar style="dark" />
     </SafeAreaProvider>
   );
