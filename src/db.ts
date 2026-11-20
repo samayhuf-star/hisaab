@@ -62,7 +62,11 @@ export function getDb() {
 
 async function init() {
   const firm = await activeFirm();
-  const db = await SQLite.openDatabaseAsync(firm.file);
+  return openFirmDb(firm.file);
+}
+
+async function openFirmDb(file: string) {
+  const db = await SQLite.openDatabaseAsync(file);
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -188,11 +192,24 @@ export async function findItemByName(name: string): Promise<Item | null> {
   return all.find((i) => i.name.toLowerCase().includes(n) || n.includes(i.name.toLowerCase())) || null;
 }
 
-async function nextInvoiceNo(kind: string): Promise<string> {
+// Invoice numbers must never repeat, even after a snapshot restore or import removes later invoices.
+// So the highest number ever issued is kept in the shared meta database (snapshots never touch it).
+export async function nextInvoiceNo(kind: string): Promise<string> {
   const db = await getDb();
-  const r = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM invoices WHERE kind = ?', kind);
+  const m = await getMeta();
+  const firm = await activeFirm();
   const prefix = kind === 'sale' ? 'INV' : 'PUR';
-  return `${prefix}-${1001 + (r ? r.n : 0)}`;
+  const key = `inv_hw_${firm.id}_${kind}`;
+  const r = await db.getFirstAsync<{ n: number | null }>('SELECT MAX(CAST(SUBSTR(no, 5) AS INTEGER)) AS n FROM invoices WHERE kind = ?', kind);
+  const k = await m.getFirstAsync<{ value: string }>('SELECT value FROM kv WHERE key = ?', key);
+  const highest = Math.max(1000, r?.n || 0, Number(k?.value) || 0);
+  const next = highest + 1;
+  await m.runAsync('INSERT OR REPLACE INTO kv(key,value) VALUES(?,?)', key, String(next));
+  return `${prefix}-${next}`;
+}
+
+async function bestEffort(fn: () => Promise<unknown>) {
+  try { await fn(); } catch (e) { console.warn('Follow-up step failed after save', e); }
 }
 
 export type NewLine = { itemId: number | null; name: string; hsn: string; qty: number; ratePaise: number; gstPercent: number };
@@ -222,8 +239,9 @@ export async function createInvoice(args: { partyId: number; kind?: string; line
       if (l.itemId && kind === 'purchase') await db.runAsync('UPDATE items SET stock = stock + ? WHERE id = ?', l.qty, l.itemId);
     }
   });
-  await countBill();
-  await takeSnapshot(`Bill ${no} added`);
+  // The bill is already saved. These follow-ups must never make the save look failed (a retry would duplicate it).
+  await bestEffort(() => countBill());
+  await bestEffort(() => takeSnapshot(`Bill ${no} added`));
   notify();
   return id;
 }
@@ -257,7 +275,7 @@ export async function recordPayment(args: { partyId: number; amountPaise: number
       left -= pay;
     }
   });
-  await takeSnapshot(`Payment ${(args.direction || 'in') === 'in' ? 'received' : 'made'}`);
+  await bestEffort(() => takeSnapshot(`Payment ${(args.direction || 'in') === 'in' ? 'received' : 'made'}`));
   notify();
 }
 
@@ -327,6 +345,75 @@ export async function exportAll(): Promise<Record<string, unknown[]>> {
   for (const t of TABLES) out[t] = await db.getAllAsync(`SELECT * FROM ${t}`);
   return out;
 }
+// Full backup: every business, in one file. Format version 2.
+export type Backup = { app: 'hisaab'; version: 2; exportedAt: string; firms: { name: string; data: Record<string, Record<string, unknown>[]> }[] };
+export async function exportEverything(): Promise<Backup> {
+  const active = await activeFirm();
+  const firms: Backup['firms'] = [];
+  for (const f of await listFirms()) {
+    const data: Record<string, Record<string, unknown>[]> = {};
+    if (f.id === active.id) {
+      Object.assign(data, await exportAll());
+    } else {
+      const fdb = await openFirmDb(f.file);
+      try { for (const t of TABLES) data[t] = await fdb.getAllAsync(`SELECT * FROM ${t}`); } finally { await fdb.closeAsync(); }
+    }
+    firms.push({ name: f.name, data: data as Record<string, Record<string, unknown>[]> });
+  }
+  return { app: 'hisaab', version: 2, exportedAt: new Date().toISOString(), firms };
+}
+
+async function tableCols(db: SQLite.SQLiteDatabase, t: string) {
+  const info = await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${t})`);
+  return new Set(info.map((c) => c.name));
+}
+
+// Turns an exported file back into data. Accepts the new all-businesses file and the older single-business file.
+export function parseBackup(json: string): Backup {
+  let raw: any;
+  try { raw = JSON.parse(json); } catch { throw new Error('This file is not a Hisaab backup.'); }
+  if (raw && raw.app === 'hisaab' && Array.isArray(raw.firms)) {
+    if (raw.firms.length === 0) throw new Error('This backup has no businesses.');
+    return raw as Backup;
+  }
+  if (raw && typeof raw === 'object' && Array.isArray(raw.invoices) && Array.isArray(raw.parties)) {
+    return { app: 'hisaab', version: 2, exportedAt: '', firms: [{ name: 'Imported business', data: raw }] };
+  }
+  throw new Error('This file is not a Hisaab backup.');
+}
+
+// Imports as NEW businesses, so nothing existing is overwritten or lost.
+export async function importBackup(b: Backup): Promise<number> {
+  const m = await getMeta();
+  let added = 0;
+  for (const f of b.firms) {
+    const name = `${String(f.name || 'Imported business')} (restored)`;
+    const id = await addFirm(name);
+    const firm = (await m.getFirstAsync<Firm>('SELECT * FROM firms WHERE id = ?', id))!;
+    const fdb = await openFirmDb(firm.file);
+    try {
+      await fdb.withTransactionAsync(async () => {
+        for (const t of TABLES) {
+          const cols = await tableCols(fdb, t);
+          for (const r of (f.data?.[t] || []) as Record<string, unknown>[]) {
+            const keys = Object.keys(r).filter((k) => cols.has(k));
+            if (keys.length === 0) continue;
+            await fdb.runAsync(`INSERT INTO ${t}(${keys.join(',')}) VALUES(${keys.map(() => '?').join(',')})`, ...(keys.map((k) => r[k]) as SQLite.SQLiteBindValue[]));
+          }
+        }
+      });
+      // never reuse an invoice number that the backup already contains
+      for (const kind of ['sale', 'purchase']) {
+        const r = await fdb.getFirstAsync<{ n: number | null }>('SELECT MAX(CAST(SUBSTR(no, 5) AS INTEGER)) AS n FROM invoices WHERE kind = ?', kind);
+        if (r?.n) await m.runAsync('INSERT OR REPLACE INTO kv(key,value) VALUES(?,?)', `inv_hw_${id}_${kind}`, String(r.n));
+      }
+    } finally { await fdb.closeAsync(); }
+    added++;
+  }
+  notify();
+  return added;
+}
+
 export async function takeSnapshot(label: string) {
   const db = await getDb();
   const json = JSON.stringify(await exportAll());

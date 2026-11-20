@@ -27,6 +27,7 @@ export default function NewBillScreen({ navigation, route }: any) {
   const [newPct, setNewPct] = useState('18');
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newState, setNewState] = useState('');
   const autoRan = React.useRef(false);
   React.useEffect(() => {
     const t = route?.params?.text;
@@ -84,16 +85,24 @@ export default function NewBillScreen({ navigation, route }: any) {
     setNote(`Understood: ${found ? 'party found' : 'new party, choose GST below'}, ${out.length} item(s). Check and edit below.`);
   }
 
+  // Editing the name means it may no longer be the customer "Understand" picked, so drop that selection.
+  function onPartyNameChange(v: string) {
+    setPartyName(v);
+    if (party && v.trim().toLowerCase() !== party.name.trim().toLowerCase()) setParty(null);
+  }
   const upd = (i: number, k: keyof Row, v: string) => setRows((r) => r.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
   const lines = rows.map((r) => ({ qty: parseFloat(r.qty) || 0, ratePaise: Math.round((parseFloat(r.rate) || 0) * 100), gstPercent: effGst(r) }));
   const valid = lines.filter((l) => l.qty > 0);
   const [sellerState, setSellerState] = useState('');
-  React.useEffect(() => { getSetting('state_code').then(setSellerState); }, []);
-  const totals = computeTotals(valid, isInterState(sellerState, party?.state_code || ''));
+  React.useEffect(() => { getSetting('state_code').then((s) => { setSellerState(s); setNewState((cur) => cur || s); }); }, []);
+  // A new party starts with the seller's own state (same-state sale). Change it below for an out-of-state buyer.
+  const buyerState = party ? party.state_code || '' : newState.trim();
+  const totals = computeTotals(valid, isInterState(sellerState, buyerState));
 
   async function save() {
     if (!partyName.trim()) { Alert.alert('Party needed', 'Enter who the bill is for.'); return; }
     if (!party && !(await findPartyExact(partyName)) && newHasGst === null) { Alert.alert('GST?', 'Tap Yes or No: does this party have GST?'); return; }
+    if (!party && !(await findPartyExact(partyName)) && sellerState && !/^\d{2}$/.test(newState.trim())) { Alert.alert('State needed', 'Enter the buyer\'s 2-digit state code so GST is split correctly (CGST+SGST or IGST).'); return; }
     const full: NewLine[] = [];
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i]; const l = lines[i];
@@ -105,9 +114,9 @@ export default function NewBillScreen({ navigation, route }: any) {
     setBusy(true);
     try {
       if (!(await ensureCanBill(await billsThisMonth()))) { setBusy(false); return; }
-      let pid = party?.id;
+      let pid = party && party.name.trim().toLowerCase() === partyName.trim().toLowerCase() ? party.id : undefined;
       if (!pid) pid = (await findPartyExact(partyName))?.id;
-      if (!pid) pid = await saveParty({ name: partyName.trim(), kind: 'customer', gstin: '', phone: newPhone.trim(), email: newEmail.trim(), state_code: '', gst_registered: newHasGst ? 1 : 0, gst_percent: newHasGst ? parseFloat(newPct) || 0 : 0 });
+      if (!pid) pid = await saveParty({ name: partyName.trim(), kind: 'customer', gstin: '', phone: newPhone.trim(), email: newEmail.trim(), state_code: newState.trim(), gst_registered: newHasGst ? 1 : 0, gst_percent: newHasGst ? parseFloat(newPct) || 0 : 0 });
       const id = await createInvoice({ partyId: pid, lines: full });
       navigation.replace('Share', { id });
     } catch (e: any) {
@@ -128,10 +137,11 @@ export default function NewBillScreen({ navigation, route }: any) {
           <Btn label="Understand" onPress={() => understand()} disabled={!text.trim()} style={{ minHeight: 44 }} />
         </Card>
         {!!note && <Text style={{ fontFamily: F.semi, fontSize: 12, color: C.green }}>{note}</Text>}
-        <Field label="Party" value={partyName} onChangeText={setPartyName} placeholder="Customer name" />
+        <Field label="Party" value={partyName} onChangeText={onPartyNameChange} placeholder="Customer name" />
         {party ? (
           <Text style={{ fontFamily: F.reg, fontSize: 12, color: C.muted }}>
             {partyPct === 0 ? 'No GST party: Bill of supply, no tax' : `${party.gstin ? `GSTIN ${party.gstin} · ` : ''}GST ${partyPct}%`}{party.phone ? ` · ${party.phone}` : ''}{party.email ? ` · ${party.email}` : ''}
+            {!party.state_code && sellerState ? '\nState not saved for this party: taxed as same-state (CGST+SGST). Add the state in Parties if they are out of state.' : ''}
           </Text>
         ) : partyName.trim() ? (
           <Card style={{ gap: 8 }}>
@@ -152,6 +162,7 @@ export default function NewBillScreen({ navigation, route }: any) {
                 ))}
               </View>
             )}
+            <Field label="Buyer state code (2 digits, e.g. 09 UP, 27 MH). Different from yours means IGST" value={newState} onChangeText={(v) => { setNewState(v.replace(/[^0-9]/g, '').slice(0, 2)); }} keyboardType="number-pad" />
             <Field label="Mobile (WhatsApp)" value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" />
             <Field label="Email (to send bills)" value={newEmail} onChangeText={setNewEmail} keyboardType="email-address" autoCapitalize="none" />
           </Card>
