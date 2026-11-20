@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { C, F, Btn, Field, Card, useLive } from '../ui';
 import { listParties, recordPayment, saveItem, saveParty, getSetting, setSetting, renameFirm, listFirms, activeFirm, addFirm, switchFirm } from '../db';
 import { enableDueReminders, refreshDueReminder } from '../lib/reminders';
@@ -175,6 +175,13 @@ export function SettingsScreen({ navigation }: any) {
       <Btn kind="ghost" label="Hisaab Premium" onPress={openPaywall} />
       <Btn kind="ghost" label="Manage subscription" onPress={openCustomerCenter} />
       <Btn kind="ghost" label="Restore purchases" onPress={async () => { const r = await restore(); Alert.alert(r ? 'Premium restored' : 'Nothing to restore'); }} />
+      <Card>
+        <Text style={{ fontFamily: F.reg, fontSize: 12, color: C.muted }}>Premium starts with a 7-day free trial, then renews automatically at the price shown on the Premium screen until you cancel. Cancel any time in your Apple ID subscription settings, at least 24 hours before the period ends.</Text>
+        <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
+          <Pressable accessibilityRole="link" hitSlop={8} onPress={() => Linking.openURL('https://machine.esamay.live/hisaab/terms')}><Text style={{ fontFamily: F.semi, fontSize: 12, color: C.green }}>Terms of Use</Text></Pressable>
+          <Pressable accessibilityRole="link" hitSlop={8} onPress={() => Linking.openURL('https://machine.esamay.live/hisaab/privacy')}><Text style={{ fontFamily: F.semi, fontSize: 12, color: C.green }}>Privacy Policy</Text></Pressable>
+        </View>
+      </Card>
       <Card><Text style={{ fontFamily: F.reg, fontSize: 12, color: C.muted }}>Your data stays on this phone. Use Backup to export a copy.</Text></Card>
     </Wrap>
   );
