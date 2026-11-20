@@ -27,6 +27,7 @@ export default function NewBillScreen({ navigation, route }: any) {
   const [newPct, setNewPct] = useState('18');
   const [newPhone, setNewPhone] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newState, setNewState] = useState('');
   const autoRan = React.useRef(false);
   React.useEffect(() => {
     const t = route?.params?.text;
@@ -89,7 +90,8 @@ export default function NewBillScreen({ navigation, route }: any) {
   const valid = lines.filter((l) => l.qty > 0);
   const [sellerState, setSellerState] = useState('');
   React.useEffect(() => { getSetting('state_code').then(setSellerState); }, []);
-  const totals = computeTotals(valid, isInterState(sellerState, party?.state_code || ''));
+  const buyerState = party ? (party.state_code || (party.gstin ? party.gstin.trim().slice(0, 2) : '')) : newState.trim();
+  const totals = computeTotals(valid, isInterState(sellerState, buyerState));
 
   async function save() {
     if (!partyName.trim()) { Alert.alert('Party needed', 'Enter who the bill is for.'); return; }
@@ -105,9 +107,10 @@ export default function NewBillScreen({ navigation, route }: any) {
     setBusy(true);
     try {
       if (!(await ensureCanBill(await billsThisMonth()))) { setBusy(false); return; }
-      let pid = party?.id;
+      // A selected party only counts while the typed name still matches it.
+      let pid = party && party.name.trim().toLowerCase() === partyName.trim().toLowerCase() ? party.id : undefined;
       if (!pid) pid = (await findPartyExact(partyName))?.id;
-      if (!pid) pid = await saveParty({ name: partyName.trim(), kind: 'customer', gstin: '', phone: newPhone.trim(), email: newEmail.trim(), state_code: '', gst_registered: newHasGst ? 1 : 0, gst_percent: newHasGst ? parseFloat(newPct) || 0 : 0 });
+      if (!pid) pid = await saveParty({ name: partyName.trim(), kind: 'customer', gstin: '', phone: newPhone.trim(), email: newEmail.trim(), state_code: newState.trim(), gst_registered: newHasGst ? 1 : 0, gst_percent: newHasGst ? parseFloat(newPct) || 0 : 0 });
       const id = await createInvoice({ partyId: pid, lines: full });
       navigation.replace('Share', { id });
     } catch (e: any) {
@@ -128,7 +131,7 @@ export default function NewBillScreen({ navigation, route }: any) {
           <Btn label="Understand" onPress={() => understand()} disabled={!text.trim()} style={{ minHeight: 44 }} />
         </Card>
         {!!note && <Text style={{ fontFamily: F.semi, fontSize: 12, color: C.green }}>{note}</Text>}
-        <Field label="Party" value={partyName} onChangeText={setPartyName} placeholder="Customer name" />
+        <Field label="Party" value={partyName} onChangeText={(v) => { setPartyName(v); if (party && v.trim().toLowerCase() !== party.name.trim().toLowerCase()) setParty(null); }} placeholder="Customer name" />
         {party ? (
           <Text style={{ fontFamily: F.reg, fontSize: 12, color: C.muted }}>
             {partyPct === 0 ? 'No GST party: Bill of supply, no tax' : `${party.gstin ? `GSTIN ${party.gstin} · ` : ''}GST ${partyPct}%`}{party.phone ? ` · ${party.phone}` : ''}{party.email ? ` · ${party.email}` : ''}
@@ -152,6 +155,7 @@ export default function NewBillScreen({ navigation, route }: any) {
                 ))}
               </View>
             )}
+            <Field label="Buyer state code (optional, e.g. 09 for UP). Leave empty for same-state bills." value={newState} onChangeText={setNewState} keyboardType="number-pad" />
             <Field label="Mobile (WhatsApp)" value={newPhone} onChangeText={setNewPhone} keyboardType="phone-pad" />
             <Field label="Email (to send bills)" value={newEmail} onChangeText={setNewEmail} keyboardType="email-address" autoCapitalize="none" />
           </Card>

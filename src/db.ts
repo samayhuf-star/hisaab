@@ -190,9 +190,12 @@ export async function findItemByName(name: string): Promise<Item | null> {
 
 async function nextInvoiceNo(kind: string): Promise<string> {
   const db = await getDb();
-  const r = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM invoices WHERE kind = ?', kind);
   const prefix = kind === 'sale' ? 'INV' : 'PUR';
-  return `${prefix}-${1001 + (r ? r.n : 0)}`;
+  // Highest number ever used: the highest existing number, or the floor kept when an older snapshot was restored.
+  const rows = await db.getAllAsync<{ no: string }>('SELECT no FROM invoices WHERE kind = ?', kind);
+  const maxUsed = rows.reduce((m, r) => Math.max(m, parseInt(String(r.no).split('-').pop() || '0', 10) || 0), 1000);
+  const floor = parseInt(await getSetting(`inv_floor_${kind}`, '0'), 10) || 0;
+  return `${prefix}-${Math.max(maxUsed, floor) + 1}`;
 }
 
 export type NewLine = { itemId: number | null; name: string; hsn: string; qty: number; ratePaise: number; gstPercent: number };
@@ -205,7 +208,8 @@ export async function createInvoice(args: { partyId: number; kind?: string; line
   if (args.lines.length === 0) throw new Error('Add at least one item');
   const sellerState = await getSetting('state_code');
   const lines: Line[] = args.lines.map((l) => ({ qty: l.qty, ratePaise: l.ratePaise, gstPercent: l.gstPercent }));
-  const t = computeTotals(lines, isInterState(sellerState, party.state_code));
+  const buyerState = party.state_code || (party.gstin ? party.gstin.trim().slice(0, 2) : '');
+  const t = computeTotals(lines, isInterState(sellerState, buyerState));
   const no = await nextInvoiceNo(kind);
   const d = new Date();
   const due = isoDate(new Date(d.getFullYear(), d.getMonth(), d.getDate() + (args.dueDays ?? 15)));
@@ -222,8 +226,9 @@ export async function createInvoice(args: { partyId: number; kind?: string; line
       if (l.itemId && kind === 'purchase') await db.runAsync('UPDATE items SET stock = stock + ? WHERE id = ?', l.qty, l.itemId);
     }
   });
-  await countBill();
-  await takeSnapshot(`Bill ${no} added`);
+  // The bill is already saved. A failure in these follow-ups must not be shown as a failed save (a retry would create a duplicate).
+  try { await countBill(); } catch { /* best-effort */ }
+  try { await takeSnapshot(`Bill ${no} added`); } catch { /* best-effort */ }
   notify();
   return id;
 }
@@ -257,7 +262,7 @@ export async function recordPayment(args: { partyId: number; amountPaise: number
       left -= pay;
     }
   });
-  await takeSnapshot(`Payment ${(args.direction || 'in') === 'in' ? 'received' : 'made'}`);
+  try { await takeSnapshot(`Payment ${(args.direction || 'in') === 'in' ? 'received' : 'made'}`); } catch { /* best-effort: the payment is already saved */ }
   notify();
 }
 
@@ -342,6 +347,14 @@ export async function restoreSnapshot(id: number) {
   const row = await db.getFirstAsync<{ json: string }>('SELECT json FROM snapshots WHERE id = ?', id);
   if (!row) throw new Error('Snapshot not found');
   await takeSnapshot('Before restore');
+  // Invoice numbers already issued must never be reused after going back to an older version.
+  const floors: Record<string, string> = {};
+  for (const kind of ['sale', 'purchase']) {
+    const rows = await db.getAllAsync<{ no: string }>('SELECT no FROM invoices WHERE kind = ?', kind);
+    const used = rows.reduce((m, r) => Math.max(m, parseInt(String(r.no).split('-').pop() || '0', 10) || 0), 0);
+    const old = parseInt(await getSetting(`inv_floor_${kind}`, '0'), 10) || 0;
+    floors[kind] = String(Math.max(used, old));
+  }
   const data = JSON.parse(row.json) as Record<string, Record<string, unknown>[]>;
   await db.withTransactionAsync(async () => {
     for (const t of TABLES) {
@@ -352,6 +365,34 @@ export async function restoreSnapshot(id: number) {
       }
     }
   });
+  for (const kind of Object.keys(floors)) await setSetting(`inv_floor_${kind}`, floors[kind]);
+  notify();
+}
+
+/** Restores from an exported backup file's JSON text. Saves the current data first so it can be undone. */
+export async function importBackupJson(text: string) {
+  let data: Record<string, Record<string, unknown>[]>;
+  try { data = JSON.parse(text); } catch { throw new Error('That file is not a Hisaab backup.'); }
+  if (!data || typeof data !== 'object' || !Array.isArray(data.invoices) || !Array.isArray(data.parties)) throw new Error('That file is not a Hisaab backup.');
+  const db = await getDb();
+  await takeSnapshot('Before import');
+  const floors: Record<string, string> = {};
+  for (const kind of ['sale', 'purchase']) {
+    const rows = await db.getAllAsync<{ no: string }>('SELECT no FROM invoices WHERE kind = ?', kind);
+    const used = rows.reduce((m, r) => Math.max(m, parseInt(String(r.no).split('-').pop() || '0', 10) || 0), 0);
+    const old = parseInt(await getSetting(`inv_floor_${kind}`, '0'), 10) || 0;
+    floors[kind] = String(Math.max(used, old));
+  }
+  await db.withTransactionAsync(async () => {
+    for (const t of TABLES) {
+      await db.runAsync(`DELETE FROM ${t}`);
+      for (const r of data[t] || []) {
+        const cols = Object.keys(r);
+        await db.runAsync(`INSERT INTO ${t}(${cols.join(',')}) VALUES(${cols.map(() => '?').join(',')})`, ...(cols.map((c) => r[c]) as SQLite.SQLiteBindValue[]));
+      }
+    }
+  });
+  for (const kind of Object.keys(floors)) await setSetting(`inv_floor_${kind}`, floors[kind]);
   notify();
 }
 
