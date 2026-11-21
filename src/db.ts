@@ -442,6 +442,16 @@ export async function restoreSnapshot(id: number) {
   notify();
 }
 
+/** Permanently erases every record and saved version of the active business on this phone. */
+export async function deleteActiveBusinessData() {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    for (const t of TABLES) await db.runAsync(`DELETE FROM ${t}`);
+    await db.runAsync('DELETE FROM snapshots');
+  });
+  notify();
+}
+
 // Free plan counts bills across ALL businesses together, kept in the shared meta database.
 export async function billsThisMonth(): Promise<number> {
   const m = await getMeta();

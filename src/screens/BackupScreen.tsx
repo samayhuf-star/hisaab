@@ -5,7 +5,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { C, F, Btn, Card, useLive } from '../ui';
 import * as DocumentPicker from 'expo-document-picker';
-import { exportEverything, importBackup, listSnapshots, parseBackup, restoreSnapshot, takeSnapshot } from '../db';
+import { deleteActiveBusinessData, exportEverything, importBackup, listSnapshots, parseBackup, restoreSnapshot, takeSnapshot } from '../db';
 
 export default function BackupScreen() {
   const insets = useSafeAreaInsets();
@@ -46,6 +46,11 @@ export default function BackupScreen() {
       <Btn label="Export full backup file" onPress={exportFile} />
       <Btn kind="ghost" label="Import backup file" onPress={importFile} />
       <Btn kind="ghost" label="Save a version now" onPress={() => takeSnapshot('Saved manually')} />
+      <Btn kind="ghost" label="Delete all data of this business" onPress={() =>
+        Alert.alert('Delete all data?', 'Every bill, party, item and saved version of this business will be erased from this phone. Export a backup first if you may need it. This cannot be undone.', [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete everything', style: 'destructive', onPress: async () => { try { await deleteActiveBusinessData(); Alert.alert('Deleted', 'All data of this business was erased.'); } catch (e: any) { Alert.alert('Could not delete', String(e?.message || e)); } } },
+        ])} />
       <Text style={{ fontFamily: F.bold, fontSize: 14, color: C.ink }}>Version history</Text>
       {snaps.length === 0 && <Text style={{ fontFamily: F.reg, fontSize: 13, color: C.muted }}>Versions appear here as you create bills.</Text>}
       {snaps.map((s) => (
