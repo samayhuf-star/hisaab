@@ -14,13 +14,17 @@ export default function VoiceAssistant({ onCommand }: { onCommand: (c: ReturnTyp
   const [msg, setMsg] = useState('');
   const active = useRef(false);
   const last = useRef('');
+  const retried = useRef(false);
 
   function finish() {
     if (!active.current) return;
     active.current = false;
     setListening(false);
     const t = last.current.trim();
-    if (!t) { setMsg('I could not hear anything. Tap the mic and try again.'); return; }
+    if (!t) {
+      if (!retried.current) { retried.current = true; setMsg('Did not catch that. Listening again...'); setTimeout(() => begin(), 300); return; }
+      setMsg('I could not hear anything. Move closer to the mic and tap Speak again.'); return;
+    }
     const cmd = parseCommand(t);
     if (cmd.kind === 'unknown') { setMsg('I did not understand. Try: "Rakesh ko 10,000 ka bill, 18 percent GST" or "Add party Rakesh, phone 98..., GST yes".'); return; }
     setOpen(false);
@@ -34,12 +38,16 @@ export default function VoiceAssistant({ onCommand }: { onCommand: (c: ReturnTyp
     active.current = false; setListening(false); setMsg('Could not hear that. Check the microphone permission and try again.');
   });
 
+  function begin() {
+    last.current = '';
+    active.current = true; setListening(true);
+    ExpoSpeechRecognitionModule.start({ lang: 'hi-IN', interimResults: true, continuous: false, contextualStrings: ['bill', 'party', 'GST', 'percent', 'hazaar', 'lakh', 'rate'] });
+  }
   async function start() {
-    setOpen(true); setHeard(''); setMsg(''); last.current = '';
+    setOpen(true); setHeard(''); setMsg(''); last.current = ''; retried.current = false;
     const p = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!p.granted) { setMsg('Microphone is off. Turn it on for Hisaab in Settings.'); return; }
-    active.current = true; setListening(true);
-    ExpoSpeechRecognitionModule.start({ lang: 'hi-IN', interimResults: true, continuous: false });
+    begin();
   }
   function stop() { ExpoSpeechRecognitionModule.stop(); }
   function close() { active.current = false; setListening(false); try { ExpoSpeechRecognitionModule.abort(); } catch { /* not running */ } setOpen(false); }

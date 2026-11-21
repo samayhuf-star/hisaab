@@ -78,8 +78,29 @@ function findGst(tokens: string[]): { rate: number; from: number; to: number } |
   return null;
 }
 
-const normalize = (input: string) =>
+
+// Hindi speech recognition (hi-IN) returns Devanagari. Map the command words and numbers to the
+// Latin forms the parser understands. Names (e.g. "रोहित") are left as spoken.
+const DEVA: Record<string, string> = {
+  'को': 'ko', 'का': 'ka', 'की': 'ki', 'के': 'ke', 'बिल': 'bill', 'भेजो': 'bhejo', 'भेज': 'bhej', 'बनाओ': 'banao', 'बना': 'bana', 'दो': 'do',
+  'हजार': 'hazaar', 'हज़ार': 'hazaar', 'लाख': 'lakh', 'करोड़': 'crore', 'सौ': 'sau', 'रुपये': 'rupaye', 'रुपए': 'rupaye', 'रूपये': 'rupaye',
+  'पार्टी': 'party', 'कस्टमर': 'customer', 'ग्राहक': 'grahak', 'सप्लायर': 'supplier', 'जोड़ो': 'jodo', 'जोड़': 'jod', 'नया': 'naya', 'नई': 'nayi', 'नयी': 'nayi',
+  'नंबर': 'number', 'मोबाइल': 'mobile', 'फोन': 'phone', 'ईमेल': 'email', 'जीएसटी': 'gst', 'प्रतिशत': 'percent', 'परसेंट': 'percent', 'पर्सेंट': 'percent', 'प्रसेंट': 'percent',
+  'और': 'aur', 'जी': 'ji', 'हाँ': 'yes', 'हां': 'yes', 'नहीं': 'nahi', 'बिना': 'bina', 'रेट': 'rate', 'भाव': 'bhav', 'दाम': 'daam',
+  'एक': 'ek', 'तीन': 'teen', 'चार': 'char', 'पांच': 'paanch', 'पाँच': 'paanch', 'छह': 'chhe', 'छः': 'chhe', 'छ': 'chhe', 'सात': 'saat', 'आठ': 'aath', 'नौ': 'nau', 'दस': 'das',
+  'ग्यारह': 'gyarah', 'बारह': 'barah', 'तेरह': 'terah', 'चौदह': 'chaudah', 'पंद्रह': 'pandrah', 'पन्द्रह': 'pandrah', 'सोलह': 'solah', 'सत्रह': 'satrah', 'अठारह': 'atharah',
+  'उन्नीस': 'unnis', 'बीस': 'bees', 'पच्चीस': 'pachees', 'तीस': 'tees', 'चालीस': 'chalis', 'पचास': 'pachas', 'साठ': 'saath', 'सत्तर': 'sattar', 'अस्सी': 'assi', 'नब्बे': 'nabbe',
+};
+const DEVA_DIGITS = '०१२३४५६७८९';
+const fromDevanagari = (input: string) =>
   input
+    .replace(/[०-९]/g, (d) => String(DEVA_DIGITS.indexOf(d)))
+    .split(/\s+/)
+    .map((w) => DEVA[w.replace(/[,।.]+$/g, '')] ?? w)
+    .join(' ');
+
+const normalize = (input: string) =>
+  fromDevanagari(input)
     .trim()
     .replace(/\s+/g, ' ')
     .replace(/\bg\s+thara\b/gi, 'athara')
@@ -233,7 +254,7 @@ export function parsePartyCommand(input: string): ParsedParty | null {
   let rawName = m ? m[1] : '';
   rawName = rawName.split(/\b(?:phone|mobile|number|contact|email|mail|gst|gstin|with|ke saath|id|at)\b/i)[0];
   rawName = rawName.replace(/[\d@.%]+/g, ' ').replace(/\s+/g, ' ').trim();
-  const name = rawName.split(' ').filter((w) => !LEAD.has(w.toLowerCase())).join(' ').trim();
+  const name = rawName.split(' ').filter((w) => !LEAD.has(w.toLowerCase()) && !ADD_WORDS.test(w)).join(' ').trim();
   if (!name) return null;
   return {
     name: name.replace(/\b\w/g, (c) => c.toUpperCase()),
