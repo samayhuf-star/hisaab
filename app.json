@@ -15,7 +15,10 @@
           "whatsapp",
           "upi"
         ],
-        "NSPhotoLibraryUsageDescription": "Hisaab accesses your photos only if you choose an image yourself, for example to read a barcode from a saved picture. It never browses your library."
+        "NSPhotoLibraryUsageDescription": "Hisaab accesses your photos only if you choose an image yourself, for example to read a barcode from a saved picture. It never browses your library.",
+        "NSCameraUsageDescription": "Hisaab uses the camera only to scan item barcodes.",
+        "NSMicrophoneUsageDescription": "Hisaab uses the microphone only when you tap the mic to speak a bill.",
+        "NSSpeechRecognitionUsageDescription": "Hisaab uses speech recognition only to turn your spoken bill into text."
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,
@@ -87,7 +90,9 @@
     "extra": {
       "eas": {
         "projectId": "a899980a-8fe4-4f80-af89-2430710b2eac"
-      }
-    }
+      },
+      "privacyPolicyUrl": "https://machine.esamay.live/hisaab/privacy"
+    },
+    "description": "Hisaab is a simple GST billing and accounts app for small businesses. Make bills, track stock and see what you are owed."
   }
 }
