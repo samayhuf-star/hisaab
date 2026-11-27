@@ -30,3 +30,7 @@ Median of the direct mobile competitors is about ₹800 a year. Hisaab sits at o
 ## Setup status 17 Nov 2026
 - RevenueCat project "Hisaab" (96887c41), iOS app appe18729def2, entitlement `premium`, offering `default` ($rc_monthly = hisaab_monthly, $rc_annual = hisaab_yearly) with a RevenueCat paywall attached.
 - App Store Connect: subscription group "Hisaab Premium", products hisaab_monthly (₹99) and hisaab_yearly (₹799), 175 territories, equalized from India price. Still needs a review screenshot before submission.
+
+## Standard pack 27 Nov 2026 (autopilot I09)
+- Offering `default` should show four packages: `$rc_weekly` (hisaab_weekly), `$rc_monthly` (hisaab_monthly), `$rc_annual` (hisaab_yearly), `$rc_lifetime` (hisaab_lifetime, non-consumable). Standard prices: weekly $2.99, monthly $5.99, annual $29.99, lifetime $39.99; 7-day trial on the subscriptions.
+- Still to do in the dashboards (not done by code): create hisaab_weekly and hisaab_lifetime in App Store Connect, attach both to entitlement `premium`, add the two packages to `default` and to the RevenueCat paywall.

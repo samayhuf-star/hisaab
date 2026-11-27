@@ -2,7 +2,7 @@
   "expo": {
     "name": "Hisaab",
     "slug": "hisaab",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -18,7 +18,10 @@
         "NSPhotoLibraryUsageDescription": "Hisaab accesses your photos only if you choose an image yourself, for example to read a barcode from a saved picture. It never browses your library.",
         "NSCameraUsageDescription": "Hisaab uses the camera only to scan item barcodes.",
         "NSMicrophoneUsageDescription": "Hisaab uses the microphone only when you tap the mic to speak a bill.",
-        "NSSpeechRecognitionUsageDescription": "Hisaab uses speech recognition only to turn your spoken bill into text."
+        "NSSpeechRecognitionUsageDescription": "Hisaab uses speech recognition only to turn your spoken bill into text.",
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,
@@ -37,6 +40,9 @@
             ]
           }
         ]
+      },
+      "entitlements": {
+        "aps-environment": "production"
       }
     },
     "android": {
@@ -82,6 +88,13 @@
         {
           "microphonePermission": "Hisaab uses the microphone only when you tap the mic to speak a bill.",
           "speechRecognitionPermission": "Hisaab uses speech recognition only to turn your spoken bill into text."
+        }
+      ],
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "production",
+          "disableLocation": true
         }
       ]
     ],

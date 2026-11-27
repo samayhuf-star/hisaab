@@ -6,6 +6,7 @@ import { enableDueReminders, refreshDueReminder } from '../lib/reminders';
 import { isValidGstin } from '../lib/gst';
 import { openCustomerCenter, openPaywall, restore } from '../premium';
 import { onScan } from '../lib/scan';
+import { setPushConsent } from '../push';
 
 const Wrap = ({ children }: { children: React.ReactNode }) => (
   <KeyboardAvoidingView style={{ flex: 1, backgroundColor: C.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -126,6 +127,7 @@ export function SettingsScreen({ navigation }: any) {
   const current = useLive(activeFirm, null as Awaited<ReturnType<typeof activeFirm>> | null);
   const theme = useLive(() => getSetting('invoice_theme', 'classic'), 'classic');
   const rem = useLive(() => getSetting('due_reminders'), '');
+  const tips = useLive(() => getSetting('push_tips'), '');
   const [newFirm, setNewFirm] = useState('');
   async function pickFirm(id: number) { await switchFirm(id); navigation.popToTop(); }
   async function createFirm() {
@@ -163,6 +165,7 @@ export function SettingsScreen({ navigation }: any) {
         ))}
       </View>
       <Btn kind="ghost" label={rem === '1' ? 'Daily due reminder: on' : 'Daily due reminder: off'} onPress={toggleRem} />
+      <Btn kind="ghost" label={tips === '1' ? 'Tips and updates: on' : 'Tips and updates: off'} onPress={() => setPushConsent(tips !== '1')} />
       <Text style={{ fontFamily: F.bold, fontSize: 15, color: C.ink, marginTop: 8 }}>Your businesses</Text>
       {firms.map((f) => (
         <Pressable key={f.id} accessibilityRole="button" onPress={() => pickFirm(f.id)} style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 14, borderRadius: 12, backgroundColor: current?.id === f.id ? C.greenSoft : C.card, borderWidth: 1, borderColor: current?.id === f.id ? C.green : C.border }}>
@@ -176,7 +179,7 @@ export function SettingsScreen({ navigation }: any) {
       <Btn kind="ghost" label="Manage subscription" onPress={openCustomerCenter} />
       <Btn kind="ghost" label="Restore purchases" onPress={async () => { const r = await restore(); Alert.alert(r ? 'Premium restored' : 'Nothing to restore'); }} />
       <Card>
-        <Text style={{ fontFamily: F.reg, fontSize: 12, color: C.muted }}>Premium starts with a 7-day free trial, then renews automatically at the price shown on the Premium screen until you cancel. Cancel any time in your Apple ID subscription settings, at least 24 hours before the period ends.</Text>
+        <Text style={{ fontFamily: F.reg, fontSize: 12, color: C.muted }}>Weekly, monthly and yearly Premium start with a 7-day free trial, then renew automatically at the price shown on the Premium screen until you cancel. Lifetime is a one-time purchase. Cancel any time in your Apple ID subscription settings, at least 24 hours before the period ends.</Text>
         <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
           <Pressable accessibilityRole="link" hitSlop={8} onPress={() => Linking.openURL('https://machine.esamay.live/hisaab/terms')}><Text style={{ fontFamily: F.semi, fontSize: 12, color: C.green }}>Terms of Use</Text></Pressable>
           <Pressable accessibilityRole="link" hitSlop={8} onPress={() => Linking.openURL('https://machine.esamay.live/hisaab/privacy')}><Text style={{ fontFamily: F.semi, fontSize: 12, color: C.green }}>Privacy Policy</Text></Pressable>

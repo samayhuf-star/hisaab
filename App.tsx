@@ -15,6 +15,7 @@ import VoiceAssistant from './src/components/VoiceAssistant';
 import ScanScreen from './src/screens/ScanScreen';
 import { C, F, Icon } from './src/ui';
 import { initPurchases } from './src/premium';
+import { initPush } from './src/push';
 
 initPurchases();
 import HomeScreen from './src/screens/HomeScreen';
@@ -49,7 +50,7 @@ export default function App() {
   const [ok] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, SpaceGrotesk_700Bold, Fraunces_700Bold });
   const [onb, setOnb] = useState<boolean | null>(null);
   const [route, setRoute] = useState('Tabs');
-  useEffect(() => { isOnboarded().then(setOnb).catch(() => setOnb(true)); }, []);
+  useEffect(() => { isOnboarded().then(setOnb).catch(() => setOnb(true)); initPush(); }, []);
   useEffect(() => { refreshDueReminder().catch(() => {}); return subscribe(() => { refreshDueReminder().catch(() => {}); }); }, []);
   if (!ok || onb === null) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator color={C.green} /></View>;
   if (!onb) return <SafeAreaProvider><OnboardingScreen onDone={() => setOnb(true)} /><StatusBar style="dark" /></SafeAreaProvider>;

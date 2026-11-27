@@ -2,6 +2,9 @@ import { Platform } from 'react-native';
 import Purchases, { CustomerInfo } from 'react-native-purchases';
 import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 
+// Entitlement `premium`. Offering `default` shows four packages in the RevenueCat paywall:
+// $rc_weekly (hisaab_weekly), $rc_monthly (hisaab_monthly), $rc_annual (hisaab_yearly), $rc_lifetime
+// (hisaab_lifetime, non-consumable). Plans and prices live in the RevenueCat dashboard; see PRICING.md.
 export const ENTITLEMENT = 'premium';
 export const FREE_BILLS_PER_MONTH = 50;
 let configured = false;

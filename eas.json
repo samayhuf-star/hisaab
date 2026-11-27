@@ -17,7 +17,8 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_RC_IOS_KEY": "appl_SUyVXOIcVelQrjSNvybpmCfcCte"
+        "EXPO_PUBLIC_RC_IOS_KEY": "appl_SUyVXOIcVelQrjSNvybpmCfcCte",
+        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "76710351-f07a-47af-afee-275a0679441f"
       }
     },
     "simulator": {
@@ -26,7 +27,8 @@
         "simulator": true
       },
       "env": {
-        "EXPO_PUBLIC_RC_IOS_KEY": "appl_SUyVXOIcVelQrjSNvybpmCfcCte"
+        "EXPO_PUBLIC_RC_IOS_KEY": "appl_SUyVXOIcVelQrjSNvybpmCfcCte",
+        "EXPO_PUBLIC_ONESIGNAL_APP_ID": "76710351-f07a-47af-afee-275a0679441f"
       }
     }
   },
