@@ -1,0 +1,35 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "categories": [
+      "FINANCE",
+      "BUSINESS"
+    ],
+    "info": {
+      "en-US": {
+        "title": "Hisaab: GST Bill & Invoice",
+        "subtitle": "Khata, Udhaar & Billing App",
+        "description": "Hisaab is a simple GST billing and accounts app for Indian shops and small businesses. Make a bill in seconds, share it on WhatsApp, and see who owes you money.\n\nSAY OR TYPE YOUR BILL\nWrite \"Sharma ji ko 5000 ka bill\" or tap the mic and speak in Hindi, English or Hinglish. Hisaab fills in the party, items and amounts for you.\n\nGST DONE RIGHT\nCGST and SGST for the same state, IGST for other states, GSTIN checking, round-off and clean tax invoices.\n\nSHARE AND GET PAID\nSend bills on WhatsApp, share a PDF, and show a UPI QR code on every bill so customers can pay you straight away.\n\nKNOW WHO OWES YOU\nTrack parties, payments and dues. Payments are matched to the oldest open bills automatically. Send reminders in one tap.\n\nSTOCK AND BARCODES\nKeep items with rates, GST and stock. Scan a barcode to add an item.\n\nBACKUP AND RESTORE\nYour data stays on your phone. Back it up and restore it any time.\n\nFREE TO START\nMake up to 50 bills every month for free, across all your businesses. Hisaab Premium unlocks unlimited bills, invoice themes, multiple businesses and due-date reminders.\n\nPremium is an auto-renewing subscription: Monthly or Yearly. Payment is charged to your Apple ID at confirmation. It renews automatically unless cancelled at least 24 hours before the period ends. Manage or cancel any time in your App Store account settings.\n\nTerms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/\nTerms: https://machine.esamay.live/hisaab/terms\nPrivacy Policy: https://machine.esamay.live/hisaab/privacy",
+        "keywords": [
+          "ledger",
+          "udhar",
+          "udhari",
+          "bahi",
+          "estimate",
+          "quotation",
+          "receipt",
+          "maker",
+          "generator",
+          "kirana",
+          "shop",
+          "business",
+          "upi",
+          "hindi"
+        ],
+        "promoText": "Make a GST bill in seconds. Say it in Hindi or English, share on WhatsApp, get paid by UPI.",
+        "supportUrl": "https://machine.esamay.live/hisaab/support",
+        "privacyPolicyUrl": "https://machine.esamay.live/hisaab/privacy"
+      }
+    }
+  }
+}

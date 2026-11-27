@@ -6,6 +6,7 @@ import * as Sharing from 'expo-sharing';
 import { C, F, Btn, Card, Chip, useLive } from '../ui';
 import { getInvoice, getSetting, recordPayment } from '../db';
 import { buildUpiLink, formatRupees } from '../lib/format';
+import { noteSuccess } from '../lib/reviewPrompt';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
 
@@ -50,6 +51,7 @@ export default function ShareScreen({ route, navigation }: any) {
   }
   async function markPaid() {
     await recordPayment({ partyId: party.id, amountPaise: due, invoiceId: inv.id });
+    noteSuccess(2); // rating prompt after the 2nd bill marked as paid
   }
   return (
     <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ padding: 20, gap: 14 }}>
