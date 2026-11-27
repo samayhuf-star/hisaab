@@ -7,7 +7,7 @@ import { finishOnboarding, renameFirm, activeFirm, setSetting } from '../db';
 import { isValidGstin } from '../lib/gst';
 import { enableDueReminders } from '../lib/reminders';
 import { setPushConsent } from '../push';
-import { FREE_BILLS_PER_MONTH } from '../premium';
+import { FREE_BILLS_PER_MONTH, openPaywall } from '../premium';
 
 /** Screens in onboarding (read by the autopilot panel). */
 export const ONBOARDING_SCREENS = 10;
@@ -74,6 +74,8 @@ export default function OnboardingScreen({ onDone }: { onDone: () => void }) {
     await setSetting('upi_id', upi.trim());
     const f = await activeFirm(); await renameFirm(f.id, name.trim());
     await finishOnboarding();
+    // Show the RevenueCat paywall once, right after onboarding; the app opens when it closes.
+    await openPaywall();
     onDone();
   }
 
